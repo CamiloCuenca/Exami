@@ -1,4 +1,6 @@
 package edu.uniquindio.exami.services;
+import edu.uniquindio.exami.dto.LoginRequestDTO;
+import edu.uniquindio.exami.dto.LoginResponseDTO;
 import edu.uniquindio.exami.dto.RegistroRequestDTO;
 import edu.uniquindio.exami.dto.RegistroResponseDTO;
 import org.junit.jupiter.api.Test;
@@ -22,7 +24,7 @@ public class AutenticacionServiceTest {
         String uniqueEmail = "test." + System.currentTimeMillis() + "@uqvirtual.edu.co";
         
         RegistroRequestDTO request = new RegistroRequestDTO();
-        request.setNombre("Test");
+        request.setNombre("TestC");
         request.setApellido("User");
         request.setEmail(uniqueEmail);  // Email único garantizado
         request.setContrasena("Password123!");
@@ -34,6 +36,17 @@ public class AutenticacionServiceTest {
         service.registrarUsuario(request);
    
     }
+
+    @Test
+    @Rollback
+    void loginUsuarioBasico() {
+        // Usar credenciales de un usuario que ya existe en tu BD de prueba
+        LoginRequestDTO request = new LoginRequestDTO("usuario_existente@uqvirtual.edu.co", "su_password");
+        LoginResponseDTO response = service.loginUsuario(request);
+
+        assertEquals(1, response.codigoResultado());
+    }
+
 
   
 } 

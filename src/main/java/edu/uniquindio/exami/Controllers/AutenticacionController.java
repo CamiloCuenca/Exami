@@ -1,5 +1,7 @@
 package edu.uniquindio.exami.Controllers;
 
+import edu.uniquindio.exami.dto.LoginRequestDTO;
+import edu.uniquindio.exami.dto.LoginResponseDTO;
 import edu.uniquindio.exami.dto.RegistroRequestDTO;
 import edu.uniquindio.exami.dto.RegistroResponseDTO;
 import edu.uniquindio.exami.services.AutenticacionService;
@@ -40,5 +42,27 @@ public class AutenticacionController {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponseDTO> loginUsuario(@RequestBody LoginRequestDTO request) {
+        LoginResponseDTO response = autenticacionService.loginUsuario(request);
+
+        // Manejar diferentes casos según el código de resultado
+        switch (response.codigoResultado()) {
+            case 1: // LOGIN_EXITOSO
+                return ResponseEntity.ok(response);
+            case -1: // LOGIN_USUARIO_NO_ENCONTRADO
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            case -2: // LOGIN_CUENTA_INACTIVA
+            case -3: // LOGIN_CUENTA_BLOQUEADA
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            case -4: // LOGIN_CONTRASENA_INCORRECTA
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+            default: // LOGIN_ERROR_INESPERADO (-99)
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+
     
 }
