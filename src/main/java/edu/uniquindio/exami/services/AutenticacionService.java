@@ -131,7 +131,7 @@ public class AutenticacionService {
 
     public LoginResponseDTO loginUsuario(LoginRequestDTO request) {
         try {
-            logger.info("Intentando inicio de sesión para: " + request.contrasena());
+            logger.info("Intentando inicio de sesión para: " + request.email()); // Cambiado para loggear el email
 
             // Validación básica
             if (request.email() == null || request.email().isEmpty() ||
@@ -141,7 +141,7 @@ public class AutenticacionService {
             }
 
             Map<String, Object> inParams = new HashMap<>();
-            inParams.put("p_correo", request.contrasena());
+            inParams.put("p_correo", request.email()); // CORRECCIÓN: Usar request.email()
             inParams.put("p_contrasena", request.contrasena());
 
             Map<String, Object> result = loginUsuarioCall.execute(inParams);

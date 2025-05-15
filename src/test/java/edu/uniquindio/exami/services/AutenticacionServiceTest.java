@@ -18,10 +18,10 @@ public class AutenticacionServiceTest {
     private AutenticacionService service;
 
     @Test
-    @Rollback
+
     void registrarUsuario() {
         // Genera un email único con timestamp
-        String uniqueEmail = "test." + System.currentTimeMillis() + "@uqvirtual.edu.co";
+        String uniqueEmail = "test12@uqvirtual.edu.co";
         
         RegistroRequestDTO request = new RegistroRequestDTO();
         request.setNombre("TestC");
@@ -38,15 +38,14 @@ public class AutenticacionServiceTest {
     }
 
     @Test
-    @Rollback
     void loginUsuarioBasico() {
         // Usar credenciales de un usuario que ya existe en tu BD de prueba
-        LoginRequestDTO request = new LoginRequestDTO("usuario_existente@uqvirtual.edu.co", "su_password");
+        LoginRequestDTO request = new LoginRequestDTO("juan.perez@uni.edu", "JuanP3rez#2024");
         LoginResponseDTO response = service.loginUsuario(request);
 
         assertEquals(1, response.codigoResultado());
+
+
     }
 
-
-  
 } 
