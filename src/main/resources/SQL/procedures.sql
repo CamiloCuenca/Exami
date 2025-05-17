@@ -137,130 +137,130 @@ END SP_REGISTRAR_USUARIO_COMPLETO;
 -- PROCEDURE para iniciar sesión
 
 CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
-    p_correo IN VARCHAR2,
-    p_contrasena IN VARCHAR2,
-    p_id_usuario OUT NUMBER,
-    p_nombre_completo OUT VARCHAR2,
-    p_tipo_usuario OUT VARCHAR2,
-    p_resultado OUT NUMBER,
-    p_mensaje OUT VARCHAR2
+    p_correo            IN VARCHAR2,
+    p_contrasena        IN VARCHAR2,
+    p_id_usuario        OUT NUMBER,
+    p_nombre_completo   OUT VARCHAR2,
+    p_tipo_usuario      OUT VARCHAR2,
+    p_resultado         OUT NUMBER,
+    p_mensaje           OUT VARCHAR2,
+    p_ip_acceso         IN VARCHAR2 DEFAULT NULL
 ) AS
-    v_usuario USUARIO%ROWTYPE;
-    v_contrasena_db VARCHAR2(100);
-    v_estado_usuario NUMBER;
+    v_usuario           USUARIO%ROWTYPE;
     v_intentos_actuales NUMBER;
-    v_next_audit_id NUMBER;
+
+    -- Códigos de resultado estandarizados
+    COD_EXITO                   CONSTANT NUMBER := 1;   -- Mantener 1 para éxito para compatibilidad
+    COD_USUARIO_NO_ENCONTRADO   CONSTANT NUMBER := -1;
+    COD_USUARIO_INACTIVO        CONSTANT NUMBER := -2;
+    COD_CUENTA_BLOQUEADA        CONSTANT NUMBER := -3;
+    COD_CONTRASENA_INCORRECTA   CONSTANT NUMBER := -4;
+    COD_ERROR_DESCONOCIDO       CONSTANT NUMBER := -99;
 BEGIN
     -- Inicializar parámetros de salida
     p_id_usuario := NULL;
     p_nombre_completo := NULL;
     p_tipo_usuario := NULL;
-    p_resultado := 0;
-    p_mensaje := NULL;
+    p_resultado := COD_ERROR_DESCONOCIDO;
+    p_mensaje := 'Error durante el inicio de sesión';
+
+    -- Validación de parámetros de entrada
+    IF p_correo IS NULL OR LENGTH(TRIM(p_correo)) = 0 THEN
+        p_resultado := COD_USUARIO_NO_ENCONTRADO;
+        p_mensaje := 'El correo electrónico es obligatorio';
+        RETURN;
+    END IF;
+
+    IF p_contrasena IS NULL THEN
+        p_resultado := COD_CONTRASENA_INCORRECTA;
+        p_mensaje := 'La contraseña es obligatoria';
+        RETURN;
+    END IF;
 
     -- Buscar usuario por correo electrónico
-BEGIN
-SELECT * INTO v_usuario
-FROM USUARIO
-WHERE EMAIL = p_correo;
-EXCEPTION
+    BEGIN
+        SELECT * INTO v_usuario
+        FROM USUARIO
+        WHERE EMAIL = p_correo;
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            p_resultado := -1; -- Usuario no encontrado
+            p_resultado := COD_USUARIO_NO_ENCONTRADO;
             p_mensaje := 'Correo electrónico no registrado';
             RETURN;
-END;
+    END;
 
     -- Verificar estado del usuario
     IF v_usuario.ID_ESTADO != 1 THEN -- 1 = Activo en tu tabla ESTADO_GENERAL
-        p_resultado := -2; -- Usuario inactivo/bloqueado
+        p_resultado := COD_USUARIO_INACTIVO;
         p_mensaje := 'Tu cuenta está inactiva o bloqueada';
         RETURN;
-END IF;
+    END IF;
 
     -- Verificar si la cuenta está bloqueada temporalmente por intentos fallidos
     IF v_usuario.FECHA_BLOQUEO IS NOT NULL AND
        v_usuario.FECHA_BLOQUEO > SYSTIMESTAMP - INTERVAL '30' MINUTE THEN
-        p_resultado := -3; -- Cuenta bloqueada temporalmente
+        p_resultado := COD_CUENTA_BLOQUEADA;
         p_mensaje := 'Cuenta bloqueada por múltiples intentos fallidos. Intenta nuevamente en 30 minutos.';
         RETURN;
-END IF;
+    END IF;
 
-    -- Comparar contraseñas (en producción debería ser con hash)
+    -- Comparar contraseñas (mantenido en texto plano según solicitud)
     IF v_usuario.CONTRASENA = p_contrasena THEN
         -- Credenciales correctas
-        p_resultado := 1; -- Éxito
+        p_resultado := COD_EXITO; -- Usando 1 para éxito
         p_mensaje := 'Inicio de sesión exitoso';
         p_id_usuario := v_usuario.ID_USUARIO;
         p_nombre_completo := v_usuario.NOMBRE || ' ' || v_usuario.APELLIDO;
 
         -- Obtener nombre del tipo de usuario
-SELECT NOMBRE INTO p_tipo_usuario
-FROM TIPO_USUARIO
-WHERE ID_TIPO_USUARIO = v_usuario.ID_TIPO_USUARIO;
+        BEGIN
+            SELECT NOMBRE INTO p_tipo_usuario
+            FROM TIPO_USUARIO
+            WHERE ID_TIPO_USUARIO = v_usuario.ID_TIPO_USUARIO;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                p_tipo_usuario := 'Desconocido';
+        END;
 
--- Reiniciar contador de intentos fallidos
-UPDATE USUARIO
-SET INTENTOS_FALLIDOS = 0,
-    FECHA_BLOQUEO = NULL,
-    FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
-WHERE ID_USUARIO = v_usuario.ID_USUARIO;
+        -- Reiniciar contador de intentos fallidos
+        UPDATE USUARIO
+        SET INTENTOS_FALLIDOS = 0,
+            FECHA_BLOQUEO = NULL,
+            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
+        WHERE ID_USUARIO = v_usuario.ID_USUARIO;
 
--- Obtener próximo ID de auditoría (alternativa si no hay secuencia)
-SELECT NVL(MAX(ID_AUDITORIA), 0) + 1 INTO v_next_audit_id FROM AUDITORIA;
-
--- Registrar acceso en auditoría
-INSERT INTO AUDITORIA (
-    ID_AUDITORIA, ID_USUARIO, TABLA_AFECTADA, ID_REGISTRO,
-    TIPO_OPERACION, FECHA_OPERACION, IP_ACCESO
-) VALUES (
-             v_next_audit_id, v_usuario.ID_USUARIO, 'USUARIO', v_usuario.ID_USUARIO,
-             'LOGIN_EXITOSO', SYSTIMESTAMP, NULL -- Aquí podrías pasar la IP si la tienes
-         );
-ELSE
+        -- Se ha eliminado la inserción en la tabla AUDITORIA
+    ELSE
         -- Credenciales incorrectas
-        v_intentos_actuales := v_usuario.INTENTOS_FALLIDOS + 1;
+        v_intentos_actuales := NVL(v_usuario.INTENTOS_FALLIDOS, 0) + 1;
 
         -- Actualizar intentos fallidos
-UPDATE USUARIO
-SET INTENTOS_FALLIDOS = v_intentos_actuales,
-    FECHA_ULTIMO_ACCESO = SYSTIMESTAMP,
-    FECHA_BLOQUEO = CASE
-                        WHEN v_intentos_actuales >= 3 THEN SYSTIMESTAMP
-                        ELSE FECHA_BLOQUEO
-        END
-WHERE ID_USUARIO = v_usuario.ID_USUARIO;
+        UPDATE USUARIO
+        SET INTENTOS_FALLIDOS = v_intentos_actuales,
+            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP,
+            FECHA_BLOQUEO = CASE
+                              WHEN v_intentos_actuales >= 3 THEN SYSTIMESTAMP
+                              ELSE FECHA_BLOQUEO
+                           END
+        WHERE ID_USUARIO = v_usuario.ID_USUARIO;
 
--- Determinar mensaje según intentos
-IF v_intentos_actuales >= 3 THEN
-            p_resultado := -3; -- Cuenta bloqueada
+        -- Determinar mensaje según intentos
+        IF v_intentos_actuales >= 3 THEN
+            p_resultado := COD_CUENTA_BLOQUEADA;
             p_mensaje := 'Contraseña incorrecta. Cuenta bloqueada por 30 minutos.';
-ELSE
-            p_resultado := -4; -- Contraseña incorrecta
+        ELSE
+            p_resultado := COD_CONTRASENA_INCORRECTA;
             p_mensaje := 'Contraseña incorrecta. Intentos restantes: ' || (3 - v_intentos_actuales);
-END IF;
+        END IF;
 
-        -- Obtener próximo ID de auditoría (alternativa si no hay secuencia)
-SELECT NVL(MAX(ID_AUDITORIA), 0) + 1 INTO v_next_audit_id FROM AUDITORIA;
+        -- Se ha eliminado la inserción en la tabla AUDITORIA
+    END IF;
 
--- Registrar intento fallido en auditoría
-INSERT INTO AUDITORIA (
-    ID_AUDITORIA, ID_USUARIO, TABLA_AFECTADA, ID_REGISTRO,
-    TIPO_OPERACION, FECHA_OPERACION, DATOS_ANTERIORES,
-    DATOS_NUEVOS, IP_ACCESO
-) VALUES (
-             v_next_audit_id, v_usuario.ID_USUARIO, 'USUARIO', v_usuario.ID_USUARIO,
-             'LOGIN_FALLIDO', SYSTIMESTAMP,
-             'Intentos fallidos: ' || v_usuario.INTENTOS_FALLIDOS,
-             'Intentos fallidos: ' || v_intentos_actuales,
-             NULL -- IP si está disponible
-         );
-END IF;
-
-COMMIT;
+    COMMIT;
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
-        p_resultado := -99; -- Error inesperado
+        p_resultado := COD_ERROR_DESCONOCIDO;
         p_mensaje := 'Error durante el inicio de sesión: ' || SUBSTR(SQLERRM, 1, 200);
 END LOGIN_USUARIO;
 
@@ -712,3 +712,219 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_AGREGAR_PREGUNTA;
+
+-- PROCEDURE para asignar preguntas a un examen
+CREATE SEQUENCE SEQ_ID_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE OR REPLACE PROCEDURE SP_ASIGNAR_PREGUNTAS_EXAMEN (
+    -- Parámetros de entrada
+    p_id_examen            IN NUMBER,
+    p_id_docente           IN NUMBER,
+    p_ids_preguntas        IN SYS.ODCINUMBERLIST,
+    p_porcentajes          IN SYS.ODCINUMBERLIST,
+    p_ordenes              IN SYS.ODCINUMBERLIST,
+    -- Parámetros de salida
+    p_cantidad_asignadas   OUT NUMBER,
+    p_codigo_resultado     OUT NUMBER,
+    p_mensaje_resultado    OUT VARCHAR2
+)
+IS
+    -- Variables locales
+    v_examen_existe         NUMBER := 0;
+    v_docente_es_creador    NUMBER := 0;
+    v_examen_iniciado       NUMBER := 0;
+    v_pregunta_existe       NUMBER := 0;
+    v_pregunta_ya_asignada  NUMBER := 0;
+    v_suma_porcentajes      NUMBER := 0;
+    v_id_examen_pregunta    NUMBER;
+    v_fecha_actual          TIMESTAMP;
+    v_seq_existe            NUMBER := 0;
+    
+    -- Códigos de resultado
+    COD_EXITO                     CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS          CONSTANT NUMBER := 1;
+    COD_EXAMEN_NO_EXISTE          CONSTANT NUMBER := 2;
+    COD_DOCENTE_NO_AUTORIZADO     CONSTANT NUMBER := 3;
+    COD_EXAMEN_YA_INICIADO        CONSTANT NUMBER := 4;
+    COD_PREGUNTA_NO_EXISTE        CONSTANT NUMBER := 5;
+    COD_PREGUNTA_YA_ASIGNADA      CONSTANT NUMBER := 6;
+    COD_ERROR_PORCENTAJES         CONSTANT NUMBER := 7;
+    COD_ERROR_REGISTRO            CONSTANT NUMBER := 8;
+    COD_ERROR_SECUENCIA           CONSTANT NUMBER := 9;
+BEGIN
+    -- Inicializar parámetros de salida
+    p_cantidad_asignadas := 0;
+    p_codigo_resultado := COD_ERROR_REGISTRO;
+    p_mensaje_resultado := 'Error en el proceso de asignación de preguntas';
+    v_fecha_actual := SYSTIMESTAMP;
+
+    -- 1. Validación de parámetros obligatorios
+    IF p_id_examen IS NULL OR p_id_docente IS NULL OR 
+       p_ids_preguntas IS NULL OR p_ids_preguntas.COUNT = 0 THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: Los campos id_examen, id_docente y al menos una pregunta son obligatorios';
+        RETURN;
+    END IF;
+
+    -- Validar que las listas tengan la misma longitud
+    IF p_ids_preguntas.COUNT != p_porcentajes.COUNT OR 
+       p_ids_preguntas.COUNT != p_ordenes.COUNT THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: Las listas de preguntas, porcentajes y órdenes deben tener la misma longitud';
+        RETURN;
+    END IF;
+
+    -- 2. Validar que el examen exista
+    BEGIN
+        SELECT 1 INTO v_examen_existe
+        FROM EXAMEN
+        WHERE ID_EXAMEN = p_id_examen
+          AND ID_ESTADO = 1 -- Activo
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_EXAMEN_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El examen especificado no existe o no está activo';
+            RETURN;
+    END;
+
+    -- 3. Validar que el docente sea el creador del examen o tenga permisos
+    BEGIN
+        SELECT 1 INTO v_docente_es_creador
+        FROM EXAMEN
+        WHERE ID_EXAMEN = p_id_examen
+          AND ID_DOCENTE = p_id_docente
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_DOCENTE_NO_AUTORIZADO;
+            p_mensaje_resultado := 'Error: El docente no está autorizado a modificar este examen';
+            RETURN;
+    END;
+
+    -- 4. Validar que el examen no haya iniciado
+    BEGIN
+        SELECT 1 INTO v_examen_iniciado
+        FROM EXAMEN
+        WHERE ID_EXAMEN = p_id_examen
+          AND FECHA_INICIO IS NOT NULL
+          AND FECHA_INICIO < v_fecha_actual
+          AND ROWNUM = 1;
+        
+        p_codigo_resultado := COD_EXAMEN_YA_INICIADO;
+        p_mensaje_resultado := 'Error: No se pueden modificar las preguntas de un examen ya iniciado';
+        RETURN;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            NULL; -- El examen no ha iniciado, se puede continuar
+    END;
+
+    -- 5. Verificar y crear secuencia si no existe
+    BEGIN
+        SELECT COUNT(*) INTO v_seq_existe
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_EXAMEN_PREGUNTA';
+    
+        IF v_seq_existe = 0 THEN
+            EXECUTE IMMEDIATE 'CREATE SEQUENCE SEQ_ID_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_codigo_resultado := COD_ERROR_SECUENCIA;
+            p_mensaje_resultado := 'Error al verificar la secuencia SEQ_ID_EXAMEN_PREGUNTA: ' || SQLERRM;
+            RETURN;
+    END;
+
+    -- 6. Validar la suma de porcentajes (debe ser igual a 100)
+    v_suma_porcentajes := 0;
+    FOR i IN 1..p_porcentajes.COUNT LOOP
+        v_suma_porcentajes := v_suma_porcentajes + p_porcentajes(i);
+    END LOOP;
+    
+    IF v_suma_porcentajes != 100 THEN
+        p_codigo_resultado := COD_ERROR_PORCENTAJES;
+        p_mensaje_resultado := 'Error: La suma de los porcentajes debe ser igual a 100. Suma actual: ' || v_suma_porcentajes;
+        RETURN;
+    END IF;
+
+    -- 7. Procesar cada pregunta y asignarla al examen
+    BEGIN
+        -- Primero, eliminar las preguntas actualmente asignadas al examen
+        DELETE FROM EXAMEN_PREGUNTA
+        WHERE ID_EXAMEN = p_id_examen;
+        
+        -- Asegurarnos que la secuencia esté actualizada correctamente
+        DECLARE
+            v_max_id NUMBER;
+            v_current_seq_value NUMBER;
+        BEGIN
+            -- Obtener el máximo ID actual
+            SELECT NVL(MAX(ID_EXAMEN_PREGUNTA), 0) INTO v_max_id FROM EXAMEN_PREGUNTA;
+            
+            -- Obtener el valor actual de la secuencia
+            SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_current_seq_value FROM DUAL;
+            
+            -- Si el máximo ID es mayor que el valor actual de la secuencia,
+            -- incrementar la secuencia para que empiece en max_id + 1
+            IF v_max_id >= v_current_seq_value THEN
+                EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_EXAMEN_PREGUNTA INCREMENT BY ' 
+                    || TO_CHAR(v_max_id - v_current_seq_value + 1);
+                SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_current_seq_value FROM DUAL;
+                EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_EXAMEN_PREGUNTA INCREMENT BY 1';
+            END IF;
+        END;
+        
+        -- Asignar las nuevas preguntas
+        FOR i IN 1..p_ids_preguntas.COUNT LOOP
+            -- Validar que la pregunta exista
+            BEGIN
+                SELECT 1 INTO v_pregunta_existe
+                FROM PREGUNTA
+                WHERE ID_PREGUNTA = p_ids_preguntas(i)
+                  AND ID_ESTADO = 1 -- Activa
+                  AND ROWNUM = 1;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    ROLLBACK;
+                    p_codigo_resultado := COD_PREGUNTA_NO_EXISTE;
+                    p_mensaje_resultado := 'Error: La pregunta ID ' || p_ids_preguntas(i) || ' no existe o no está activa';
+                    RETURN;
+            END;
+            
+            -- Generar ID para la asignación de pregunta-examen
+            SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_id_examen_pregunta FROM DUAL;
+            
+            -- Insertar la asignación (sin FECHA_ASIGNACION)
+            INSERT INTO EXAMEN_PREGUNTA (
+                ID_EXAMEN_PREGUNTA, ID_EXAMEN, ID_PREGUNTA, 
+                PORCENTAJE, ORDEN
+            ) VALUES (
+                v_id_examen_pregunta, p_id_examen, p_ids_preguntas(i),
+                p_porcentajes(i), p_ordenes(i)
+            );
+            
+            p_cantidad_asignadas := p_cantidad_asignadas + 1;
+        END LOOP;
+        
+        -- Actualizar el examen para reflejar que tiene preguntas asignadas
+        UPDATE EXAMEN 
+        SET FECHA_ULTIMA_MODIFICACION = v_fecha_actual,
+            ID_USUARIO_ULTIMA_MODIFICACION = p_id_docente
+        WHERE ID_EXAMEN = p_id_examen;
+        
+        -- Asignar valores de salida
+        p_codigo_resultado := COD_EXITO;
+        p_mensaje_resultado := 'Se asignaron exitosamente ' || p_cantidad_asignadas || ' preguntas al examen ID: ' || p_id_examen;
+        
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_codigo_resultado := COD_ERROR_REGISTRO;
+            p_mensaje_resultado := 'Error al asignar preguntas al examen: ' || SUBSTR(SQLERRM, 1, 500);
+    END;
+EXCEPTION
+    WHEN OTHERS THEN
+        p_codigo_resultado := COD_ERROR_REGISTRO;
+        p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
+END SP_ASIGNAR_PREGUNTAS_EXAMEN;

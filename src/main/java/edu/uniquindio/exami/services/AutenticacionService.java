@@ -81,7 +81,8 @@ public class AutenticacionService {
                         new SqlOutParameter("p_nombre_completo", Types.VARCHAR),
                         new SqlOutParameter("p_tipo_usuario", Types.VARCHAR),
                         new SqlOutParameter("p_resultado", Types.NUMERIC),
-                        new SqlOutParameter("p_mensaje", Types.VARCHAR)
+                        new SqlOutParameter("p_mensaje", Types.VARCHAR),
+                        new SqlParameter("p_ip_acceso", Types.VARCHAR)
                 );
     }
 
@@ -145,6 +146,7 @@ public class AutenticacionService {
             Map<String, Object> inParams = new HashMap<>();
             inParams.put("p_correo", request.email()); // CORRECCIÓN: Usar request.email()
             inParams.put("p_contrasena", request.contrasena());
+            inParams.put("p_ip_acceso", null); // Pasar IP como NULL
 
             Map<String, Object> result = loginUsuarioCall.execute(inParams);
 

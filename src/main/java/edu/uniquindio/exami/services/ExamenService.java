@@ -2,6 +2,8 @@ package edu.uniquindio.exami.services;
 
 import edu.uniquindio.exami.dto.ExamenRequestDTO;
 import edu.uniquindio.exami.dto.ExamenResponseDTO;
+import edu.uniquindio.exami.dto.PreguntaExamenRequestDTO;
+import edu.uniquindio.exami.dto.PreguntaExamenResponseDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -12,11 +14,17 @@ import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
+import java.sql.Connection;
 import java.sql.Types;
+import java.sql.Array;
+import java.sql.CallableStatement;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
+import oracle.jdbc.OracleConnection;
 
 @Service
 @Transactional
@@ -28,16 +36,20 @@ public class ExamenService {
     private final JdbcTemplate jdbcTemplate;
     private SimpleJdbcCall crearExamenCall;
 
-    // Códigos de resultado del procedimiento almacenado
-    private static final int COD_EXITO = 0;
-    private static final int COD_ERROR_PARAMETROS = 1;
-    private static final int COD_DOCENTE_NO_EXISTE = 2;
-    private static final int COD_TEMA_NO_EXISTE = 3;
-    private static final int COD_CATEGORIA_NO_EXISTE = 4;
-    private static final int COD_ERROR_FECHAS = 5;
-    private static final int COD_ERROR_CANTIDADES = 6;
-    private static final int COD_ERROR_REGISTRO = 7;
-    private static final int COD_ERROR_SECUENCIA = 8;
+    // Códigos de resultado para respuesta al cliente
+    private static final Integer COD_EXITO = 0;
+    private static final Integer COD_ERROR_PARAMETROS = 1;
+    private static final Integer COD_EXAMEN_NO_EXISTE = 2;
+    private static final Integer COD_DOCENTE_NO_AUTORIZADO = 3;
+    private static final Integer COD_EXAMEN_YA_INICIADO = 4;
+    private static final Integer COD_PREGUNTA_NO_EXISTE = 5;
+    private static final Integer COD_PREGUNTA_YA_ASIGNADA = 6;
+    private static final Integer COD_ERROR_PORCENTAJES = 7;
+    private static final Integer COD_ERROR_REGISTRO = 8;
+    private static final Integer COD_ERROR_SECUENCIA = 9;
+    
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     public ExamenService(JdbcTemplate jdbcTemplate) {
@@ -119,6 +131,100 @@ public class ExamenService {
             logger.severe("Error inesperado al crear examen: " + e.getMessage());
             return new ExamenResponseDTO(null, COD_ERROR_REGISTRO, 
                 "Error inesperado al crear el examen: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Asigna preguntas a un examen existente.
+     * Las preguntas se guardan en la tabla EXAMEN_PREGUNTA.
+     * 
+     * @param request DTO con la información de las preguntas a asignar
+     * @return DTO con el resultado de la operación
+     */
+    public PreguntaExamenResponseDTO asignarPreguntasExamen(PreguntaExamenRequestDTO request) {
+        Connection connection = null;
+        try {
+            logger.info("Intentando asignar preguntas al examen: " + request.getIdExamen());
+            
+            // Validación básica de datos requeridos
+            if (request.getIdExamen() == null || request.getIdDocente() == null || 
+                request.getIdsPreguntas() == null || request.getIdsPreguntas().isEmpty() ||
+                request.getPorcentajes() == null || request.getPorcentajes().isEmpty() ||
+                request.getOrdenes() == null || request.getOrdenes().isEmpty()) {
+                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
+                    "Los campos obligatorios (examen, docente, preguntas, porcentajes y órdenes) son requeridos");
+            }
+            
+            // Validar que las listas tengan la misma longitud
+            if (request.getIdsPreguntas().size() != request.getPorcentajes().size() || 
+                request.getIdsPreguntas().size() != request.getOrdenes().size()) {
+                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
+                    "Las listas de preguntas, porcentajes y órdenes deben tener la misma longitud");
+            }
+            
+            connection = dataSource.getConnection();
+            
+            // Convertir listas de Java a arrays de Oracle
+            Array idsPreguntas = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+                request.getIdsPreguntas().toArray());
+            
+            Array porcentajes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+                request.getPorcentajes().toArray());
+            
+            Array ordenes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+                request.getOrdenes().toArray());
+            
+            // Preparar la llamada al procedimiento almacenado
+            CallableStatement stmt = connection.prepareCall(
+                "{ call SP_ASIGNAR_PREGUNTAS_EXAMEN(?, ?, ?, ?, ?, ?, ?, ?) }");
+            
+            // Parámetros de entrada
+            stmt.setLong(1, request.getIdExamen());
+            stmt.setLong(2, request.getIdDocente());
+            stmt.setArray(3, idsPreguntas);
+            stmt.setArray(4, porcentajes);
+            stmt.setArray(5, ordenes);
+            
+            // Parámetros de salida
+            stmt.registerOutParameter(6, Types.INTEGER); // cantidad_asignadas
+            stmt.registerOutParameter(7, Types.INTEGER); // codigo_resultado
+            stmt.registerOutParameter(8, Types.VARCHAR); // mensaje_resultado
+            
+            // Ejecutar el procedimiento
+            stmt.execute();
+            
+            // Obtener los resultados
+            Integer cantidadAsignadas = stmt.getInt(6);
+            Integer codigoResultado = stmt.getInt(7);
+            String mensajeResultado = stmt.getString(8);
+            
+            // Cerrar recursos
+            stmt.close();
+            
+            // Crear y devolver la respuesta
+            return new PreguntaExamenResponseDTO(
+                request.getIdExamen(),
+                cantidadAsignadas,
+                codigoResultado,
+                mensajeResultado
+            );
+        } catch (SQLException e) {
+            logger.severe("Error al asignar preguntas al examen: " + e.getMessage());
+            return new PreguntaExamenResponseDTO(
+                request.getIdExamen(),
+                0, 
+                COD_ERROR_REGISTRO,
+                "Error al asignar preguntas al examen: " + e.getMessage()
+            );
+        } finally {
+            // Cerrar la conexión
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    logger.severe("Error al cerrar la conexión: " + e.getMessage());
+                }
+            }
         }
     }
 } 
