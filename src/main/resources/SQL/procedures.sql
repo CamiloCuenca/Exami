@@ -449,3 +449,266 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 200);
 END SP_CREAR_EXAMEN;
+
+-- PROCEDURE para agregar una nueva pregunta
+CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE OR REPLACE PROCEDURE SP_AGREGAR_PREGUNTA (
+    -- Parámetros básicos de la pregunta
+    p_id_docente            IN NUMBER,
+    p_id_tema               IN NUMBER,
+    p_id_nivel_dificultad   IN NUMBER,
+    p_id_tipo_pregunta      IN NUMBER,
+    p_texto_pregunta        IN VARCHAR2,
+    p_es_publica            IN NUMBER DEFAULT 0,
+    p_tiempo_maximo         IN NUMBER DEFAULT NULL,
+    p_porcentaje            IN NUMBER DEFAULT 100,
+    p_id_pregunta_padre     IN NUMBER DEFAULT NULL,
+    -- Parámetros para las opciones de respuesta (arrays)
+    p_textos_opciones       IN SYS.ODCIVARCHAR2LIST,
+    p_son_correctas         IN SYS.ODCINUMBERLIST,
+    p_ordenes               IN SYS.ODCINUMBERLIST,
+    -- Parámetros de salida
+    p_id_pregunta_creada    OUT NUMBER,
+    p_codigo_resultado      OUT NUMBER,
+    p_mensaje_resultado     OUT VARCHAR2
+)
+IS
+    -- Variables locales
+    v_id_pregunta         NUMBER;
+    v_id_opcion           NUMBER;
+    v_docente_existe      NUMBER := 0;
+    v_tema_existe         NUMBER := 0;
+    v_nivel_existe        NUMBER := 0;
+    v_tipo_existe         NUMBER := 0;
+    v_pregunta_padre_existe NUMBER := 0;
+    v_num_opciones_correctas NUMBER := 0;
+    v_id_estado           NUMBER := 1; -- Por defecto activo
+    v_seq_exists          NUMBER := 0;
+    v_max_id_pregunta     NUMBER := 0;
+    
+    -- Códigos de resultado
+    COD_EXITO                   CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS        CONSTANT NUMBER := 1;
+    COD_DOCENTE_NO_EXISTE       CONSTANT NUMBER := 2;
+    COD_TEMA_NO_EXISTE          CONSTANT NUMBER := 3;
+    COD_NIVEL_NO_EXISTE         CONSTANT NUMBER := 4;
+    COD_TIPO_NO_EXISTE          CONSTANT NUMBER := 5;
+    COD_PREGUNTA_PADRE_NO_EXISTE CONSTANT NUMBER := 6;
+    COD_ERROR_OPCIONES          CONSTANT NUMBER := 7;
+    COD_ERROR_REGISTRO          CONSTANT NUMBER := 8;
+    COD_ERROR_SECUENCIA         CONSTANT NUMBER := 9;
+BEGIN
+    -- Inicializar parámetros de salida
+    p_id_pregunta_creada := NULL;
+    p_codigo_resultado := COD_ERROR_REGISTRO;
+    p_mensaje_resultado := 'Error en el proceso de creación de la pregunta';
+
+    -- 1. Validación de parámetros obligatorios
+    IF p_id_docente IS NULL OR p_id_tema IS NULL OR 
+       p_id_nivel_dificultad IS NULL OR p_id_tipo_pregunta IS NULL OR
+       p_texto_pregunta IS NULL THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: Los campos docente, tema, nivel, tipo y texto son obligatorios';
+        RETURN;
+    END IF;
+
+    -- 2. Validación de longitudes máximas
+    IF LENGTH(p_texto_pregunta) > 1000 THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: El texto de la pregunta excede la longitud permitida (1000 caracteres)';
+        RETURN;
+    END IF;
+
+    -- 3. Validar que el docente exista y sea de tipo docente
+    BEGIN
+        SELECT 1 INTO v_docente_existe
+        FROM USUARIO
+        WHERE ID_USUARIO = p_id_docente
+          AND ID_TIPO_USUARIO = 2 -- Tipo docente
+          AND ID_ESTADO = 1       -- Activo
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_DOCENTE_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El docente especificado no existe o no está activo';
+            RETURN;
+    END;
+
+    -- 4. Validar que el tema exista
+    BEGIN
+        SELECT 1 INTO v_tema_existe
+        FROM TEMA
+        WHERE ID_TEMA = p_id_tema
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_TEMA_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El tema especificado no existe';
+            RETURN;
+    END;
+
+    -- 5. Validar nivel de dificultad
+    BEGIN
+        SELECT 1 INTO v_nivel_existe
+        FROM NIVEL_DIFICULTAD
+        WHERE ID_NIVEL_DIFICULTAD = p_id_nivel_dificultad
+          AND ESTADO = 1
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_NIVEL_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El nivel de dificultad especificado no existe o no está activo';
+            RETURN;
+    END;
+
+    -- 6. Validar tipo de pregunta
+    BEGIN
+        SELECT 1 INTO v_tipo_existe
+        FROM TIPO_PREGUNTA
+        WHERE ID_TIPO_PREGUNTA = p_id_tipo_pregunta
+          AND ESTADO = 1
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_TIPO_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El tipo de pregunta especificado no existe o no está activo';
+            RETURN;
+    END;
+
+    -- 7. Validar pregunta padre si se proporciona
+    IF p_id_pregunta_padre IS NOT NULL THEN
+        BEGIN
+            SELECT 1 INTO v_pregunta_padre_existe
+            FROM PREGUNTA
+            WHERE ID_PREGUNTA = p_id_pregunta_padre
+              AND ID_ESTADO = 1
+              AND ROWNUM = 1;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                p_codigo_resultado := COD_PREGUNTA_PADRE_NO_EXISTE;
+                p_mensaje_resultado := 'Error: La pregunta padre especificada no existe o no está activa';
+                RETURN;
+        END;
+    END IF;
+
+    -- 8. Validar opciones de respuesta
+    IF p_textos_opciones IS NULL OR p_textos_opciones.COUNT = 0 THEN
+        p_codigo_resultado := COD_ERROR_OPCIONES;
+        p_mensaje_resultado := 'Error: Debe proporcionar al menos una opción de respuesta';
+        RETURN;
+    END IF;
+
+    IF p_textos_opciones.COUNT != p_son_correctas.COUNT OR 
+       p_textos_opciones.COUNT != p_ordenes.COUNT THEN
+        p_codigo_resultado := COD_ERROR_OPCIONES;
+        p_mensaje_resultado := 'Error: Las listas de textos, corrección y órdenes deben tener la misma longitud';
+        RETURN;
+    END IF;
+
+    -- Verificar que haya al menos una opción correcta para tipos que lo requieren
+    IF p_id_tipo_pregunta != 3 THEN -- No es Verdadero/Falso
+        FOR i IN 1..p_son_correctas.COUNT LOOP
+            IF p_son_correctas(i) = 1 THEN
+                v_num_opciones_correctas := v_num_opciones_correctas + 1;
+            END IF;
+        END LOOP;
+        
+        IF v_num_opciones_correctas = 0 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta';
+            RETURN;
+        END IF;
+    END IF;
+
+    -- 9. Verificar y crear secuencias si no existen
+    -- Secuencia para preguntas
+    BEGIN
+        SELECT COUNT(*) INTO v_seq_exists
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_PREGUNTA';
+    
+        IF v_seq_exists = 0 THEN
+            EXECUTE IMMEDIATE 'CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_codigo_resultado := COD_ERROR_SECUENCIA;
+            p_mensaje_resultado := 'Error al verificar la secuencia SEQ_ID_PREGUNTA: ' || SQLERRM;
+            RETURN;
+    END;
+
+    -- Secuencia para opciones
+    BEGIN
+        SELECT COUNT(*) INTO v_seq_exists
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_OPCION';
+    
+        IF v_seq_exists = 0 THEN
+            EXECUTE IMMEDIATE 'CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+        END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_codigo_resultado := COD_ERROR_SECUENCIA;
+            p_mensaje_resultado := 'Error al verificar la secuencia SEQ_ID_OPCION: ' || SQLERRM;
+            RETURN;
+    END;
+
+    -- 10. Insertar la pregunta y opciones de respuesta
+    BEGIN
+        -- Obtener el máximo ID de pregunta actual y añadir 1
+        SELECT NVL(MAX(ID_PREGUNTA), 0) + 1 INTO v_id_pregunta FROM PREGUNTA;
+        
+        -- Si por alguna razón el ID es menor que el valor de la secuencia, usar secuencia
+        SELECT SEQ_ID_PREGUNTA.NEXTVAL INTO p_id_pregunta_creada FROM DUAL;
+        IF v_id_pregunta <= p_id_pregunta_creada THEN
+            v_id_pregunta := p_id_pregunta_creada;
+        ELSE
+            -- Avanzar la secuencia para que no haya problemas en el futuro
+            EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_PREGUNTA INCREMENT BY ' || (v_id_pregunta - p_id_pregunta_creada + 1);
+            SELECT SEQ_ID_PREGUNTA.NEXTVAL INTO p_id_pregunta_creada FROM DUAL;
+            EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_PREGUNTA INCREMENT BY 1';
+            v_id_pregunta := p_id_pregunta_creada;
+        END IF;
+        
+        -- Insertar la pregunta
+        INSERT INTO PREGUNTA (
+            ID_PREGUNTA, ID_DOCENTE, ID_TEMA, ID_NIVEL_DIFICULTAD,
+            ID_TIPO_PREGUNTA, TEXTO_PREGUNTA, ES_PUBLICA,
+            TIEMPO_MAXIMO, PORCENTAJE, ID_PREGUNTA_PADRE, ID_ESTADO
+        ) VALUES (
+            v_id_pregunta, p_id_docente, p_id_tema, p_id_nivel_dificultad,
+            p_id_tipo_pregunta, p_texto_pregunta, p_es_publica,
+            p_tiempo_maximo, p_porcentaje, p_id_pregunta_padre, v_id_estado
+        );
+
+        -- Insertar opciones de respuesta
+        FOR i IN 1..p_textos_opciones.COUNT LOOP
+            SELECT NVL(MAX(ID_OPCION), 0) + i INTO v_id_opcion FROM OPCION_RESPUESTA;
+            
+            INSERT INTO OPCION_RESPUESTA (
+                ID_OPCION, ID_PREGUNTA, TEXTO_OPCION, ES_CORRECTA, ORDEN
+            ) VALUES (
+                v_id_opcion, v_id_pregunta, p_textos_opciones(i), 
+                p_son_correctas(i), p_ordenes(i)
+            );
+        END LOOP;
+
+        -- Asignar valores de salida
+        p_id_pregunta_creada := v_id_pregunta;
+        p_codigo_resultado := COD_EXITO;
+        p_mensaje_resultado := 'Pregunta creada exitosamente. ID: ' || v_id_pregunta;
+        
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_codigo_resultado := COD_ERROR_REGISTRO;
+            p_mensaje_resultado := 'Error al registrar la pregunta: ' || SUBSTR(SQLERRM, 1, 500);
+    END;
+EXCEPTION
+    WHEN OTHERS THEN
+        p_codigo_resultado := COD_ERROR_REGISTRO;
+        p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
+END SP_AGREGAR_PREGUNTA;
