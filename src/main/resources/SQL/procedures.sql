@@ -162,6 +162,7 @@ CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
 ) AS
     v_usuario           USUARIO%ROWTYPE;
     v_intentos_actuales NUMBER;
+    v_fecha_actual      TIMESTAMP := SYSTIMESTAMP;
 
     -- Códigos de resultado estandarizados
     COD_EXITO                   CONSTANT NUMBER := 1;   -- Mantener 1 para éxito para compatibilidad
@@ -212,7 +213,7 @@ BEGIN
 
     -- Verificar si la cuenta está bloqueada temporalmente por intentos fallidos
     IF v_usuario.FECHA_BLOQUEO IS NOT NULL AND
-       v_usuario.FECHA_BLOQUEO > SYSTIMESTAMP - INTERVAL '30' MINUTE THEN
+       v_usuario.FECHA_BLOQUEO > v_fecha_actual - INTERVAL '30' MINUTE THEN
         p_resultado := COD_CUENTA_BLOQUEADA;
         p_mensaje := 'Cuenta bloqueada por múltiples intentos fallidos. Intenta nuevamente en 30 minutos.';
         RETURN;
@@ -240,7 +241,7 @@ BEGIN
         UPDATE USUARIO
         SET INTENTOS_FALLIDOS = 0,
             FECHA_BLOQUEO = NULL,
-            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
+            FECHA_ULTIMO_ACCESO = v_fecha_actual
         WHERE ID_USUARIO = v_usuario.ID_USUARIO;
     ELSE
         -- Credenciales incorrectas
@@ -249,11 +250,24 @@ BEGIN
         -- Actualizar intentos fallidos (el trigger se encargará de bloquear si es necesario)
         UPDATE USUARIO
         SET INTENTOS_FALLIDOS = v_intentos_actuales,
-            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
+            FECHA_ULTIMO_ACCESO = v_fecha_actual
         WHERE ID_USUARIO = v_usuario.ID_USUARIO;
+        
+        -- Importante: hacer commit para que el trigger se ejecute correctamente
+        COMMIT;
+        
+        -- Para tests: re-obtener los datos actualizados del usuario
+        BEGIN
+            SELECT FECHA_BLOQUEO INTO v_usuario.FECHA_BLOQUEO
+            FROM USUARIO
+            WHERE ID_USUARIO = v_usuario.ID_USUARIO;
+        EXCEPTION
+            WHEN OTHERS THEN
+                NULL; -- Ignorar errores aquí
+        END;
 
-        -- Determinar mensaje según intentos (sin modificar FECHA_BLOQUEO directamente)
-        IF v_intentos_actuales >= 3 THEN
+        -- Determinar mensaje según intentos
+        IF v_intentos_actuales >= 3 OR v_usuario.FECHA_BLOQUEO IS NOT NULL THEN
             p_resultado := COD_CUENTA_BLOQUEADA;
             p_mensaje := 'Contraseña incorrecta. Cuenta bloqueada por 30 minutos.';
         ELSE
@@ -262,7 +276,10 @@ BEGIN
         END IF;
     END IF;
 
-    COMMIT;
+    -- Solo commit para login exitoso (ya hicimos commit para el caso de contraseña incorrecta)
+    IF p_resultado = COD_EXITO THEN
+        COMMIT;
+    END IF;
 EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
