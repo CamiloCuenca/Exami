@@ -5,6 +5,7 @@ import edu.uniquindio.exami.dto.LoginRequestDTO;
 import edu.uniquindio.exami.dto.LoginResponseDTO;
 import edu.uniquindio.exami.dto.RegistroRequestDTO;
 import edu.uniquindio.exami.dto.RegistroResponseDTO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,6 +23,7 @@ import java.util.logging.Logger;
 
 @Service
 @Transactional
+@Slf4j
 public class AutenticacionService {
 
     private static final Logger logger = Logger.getLogger(AutenticacionService.class.getName());

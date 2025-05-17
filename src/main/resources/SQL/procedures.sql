@@ -77,19 +77,17 @@ EXCEPTION
             RETURN;
 END;
 
-    -- 5. Verificar email único (más eficiente)
+-- 5. Verificar email único (corrección)
 BEGIN
-SELECT 1 INTO v_email_existe
-FROM USUARIO
-WHERE EMAIL = p_email
-  AND ROWNUM = 1;
-
-p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
+    SELECT COUNT(*) INTO v_email_existe
+    FROM USUARIO
+    WHERE EMAIL = p_email;
+    
+    IF v_email_existe > 0 THEN
+        p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
         p_mensaje_resultado := 'Error: El email '||p_email||' ya está registrado';
         RETURN;
-EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            NULL; -- Continuar si no existe
+    END IF;
 END;
 
     -- 6. Validar secuencia
@@ -265,3 +263,189 @@ EXCEPTION
         p_resultado := -99; -- Error inesperado
         p_mensaje := 'Error durante el inicio de sesión: ' || SUBSTR(SQLERRM, 1, 200);
 END LOGIN_USUARIO;
+
+-- PROCEDURE para crear un nuevo examen
+
+CREATE SEQUENCE SEQ_ID_EXAMEN START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE OR REPLACE PROCEDURE SP_CREAR_EXAMEN (
+    -- Parámetros de entrada básicos
+    p_id_docente                   IN  NUMBER,
+    p_id_tema                      IN  NUMBER,
+    p_nombre                       IN  VARCHAR2,
+    p_descripcion                  IN  VARCHAR2,
+    -- Parámetros de configuración
+    p_fecha_inicio                 IN  TIMESTAMP,
+    p_fecha_fin                    IN  TIMESTAMP,
+    p_tiempo_limite                IN  NUMBER,
+    p_peso_curso                   IN  NUMBER,
+    p_umbral_aprobacion            IN  NUMBER,
+    p_cantidad_preguntas_total     IN  NUMBER,
+    p_cantidad_preguntas_presentar IN  NUMBER,
+    p_id_categoria                 IN  NUMBER,
+    p_intentos_permitidos          IN  NUMBER DEFAULT 1,
+    p_mostrar_resultados           IN  NUMBER DEFAULT 1,
+    p_permitir_retroalimentacion   IN  NUMBER DEFAULT 1,
+    -- Parámetros de salida
+    p_id_examen_creado             OUT NUMBER,
+    p_codigo_resultado             OUT NUMBER,
+    p_mensaje_resultado            OUT VARCHAR2
+)
+IS
+    -- Variables locales
+    v_id_examen            NUMBER;
+    v_tema_existe          NUMBER := 0;
+    v_docente_existe       NUMBER := 0;
+    v_categoria_existe     NUMBER := 0;
+    v_secuencia_existe     NUMBER := 0;
+    v_id_estado            NUMBER := 1; -- Por defecto activo
+    
+    -- Códigos de resultado
+    COD_EXITO                   CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS        CONSTANT NUMBER := 1;
+    COD_DOCENTE_NO_EXISTE       CONSTANT NUMBER := 2;
+    COD_TEMA_NO_EXISTE          CONSTANT NUMBER := 3;
+    COD_CATEGORIA_NO_EXISTE     CONSTANT NUMBER := 4;
+    COD_ERROR_FECHAS            CONSTANT NUMBER := 5;
+    COD_ERROR_CANTIDADES        CONSTANT NUMBER := 6;
+    COD_ERROR_REGISTRO          CONSTANT NUMBER := 7;
+    COD_ERROR_SECUENCIA         CONSTANT NUMBER := 8;
+BEGIN
+    -- Inicializar parámetros de salida
+    p_id_examen_creado := NULL;
+    p_codigo_resultado := COD_ERROR_REGISTRO;
+    p_mensaje_resultado := 'Error en el proceso de creación del examen';
+
+    -- 1. Validación de parámetros obligatorios
+    IF p_id_docente IS NULL OR p_id_tema IS NULL OR p_nombre IS NULL THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: Los campos id_docente, id_tema y nombre son obligatorios';
+        RETURN;
+    END IF;
+
+    -- 2. Validación de longitudes máximas
+    IF LENGTH(p_nombre) > 100 OR (p_descripcion IS NOT NULL AND LENGTH(p_descripcion) > 500) THEN
+        p_codigo_resultado := COD_ERROR_PARAMETROS;
+        p_mensaje_resultado := 'Error: Nombre o descripción exceden la longitud permitida';
+        RETURN;
+    END IF;
+
+    -- 3. Validar que el docente exista
+    BEGIN
+        SELECT 1 INTO v_docente_existe
+        FROM USUARIO
+        WHERE ID_USUARIO = p_id_docente
+          AND ID_TIPO_USUARIO = 2 -- Tipo docente
+          AND ID_ESTADO = 1       -- Activo
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_DOCENTE_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El docente especificado no existe o no está activo';
+            RETURN;
+    END;
+
+    -- 4. Validar que el tema exista
+    BEGIN
+        SELECT 1 INTO v_tema_existe
+        FROM TEMA
+        WHERE ID_TEMA = p_id_tema
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_codigo_resultado := COD_TEMA_NO_EXISTE;
+            p_mensaje_resultado := 'Error: El tema especificado no existe';
+            RETURN;
+    END;
+
+    -- 5. Validar categoría si se proporciona
+    IF p_id_categoria IS NOT NULL THEN
+        BEGIN
+            SELECT 1 INTO v_categoria_existe
+            FROM CATEGORIA_EXAMEN
+            WHERE ID_CATEGORIA = p_id_categoria
+              AND ESTADO = 1
+              AND ROWNUM = 1;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                p_codigo_resultado := COD_CATEGORIA_NO_EXISTE;
+                p_mensaje_resultado := 'Error: La categoría especificada no existe o no está activa';
+                RETURN;
+        END;
+    END IF;
+
+    -- 6. Validar fechas si se proporcionan
+    IF p_fecha_inicio IS NOT NULL AND p_fecha_fin IS NOT NULL THEN
+        IF p_fecha_inicio >= p_fecha_fin THEN
+            p_codigo_resultado := COD_ERROR_FECHAS;
+            p_mensaje_resultado := 'Error: La fecha de inicio debe ser anterior a la fecha de fin';
+            RETURN;
+        END IF;
+    END IF;
+
+    -- 7. Validar cantidades de preguntas
+    IF p_cantidad_preguntas_total IS NOT NULL AND p_cantidad_preguntas_presentar IS NOT NULL THEN
+        IF p_cantidad_preguntas_presentar > p_cantidad_preguntas_total THEN
+            p_codigo_resultado := COD_ERROR_CANTIDADES;
+            p_mensaje_resultado := 'Error: El número de preguntas a presentar no puede ser mayor al total';
+            RETURN;
+        END IF;
+    END IF;
+
+    -- 8. Verificar existencia de secuencia
+    BEGIN
+        SELECT 1 INTO v_secuencia_existe
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_EXAMEN';
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            -- Crear secuencia si no existe
+            EXECUTE IMMEDIATE 'CREATE SEQUENCE SEQ_ID_EXAMEN START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+            v_secuencia_existe := 1;
+    END;
+
+    -- 9. Generar ID para el examen
+    BEGIN
+        SELECT SEQ_ID_EXAMEN.NEXTVAL INTO v_id_examen FROM DUAL;
+    EXCEPTION
+        WHEN OTHERS THEN
+            p_codigo_resultado := COD_ERROR_SECUENCIA;
+            p_mensaje_resultado := 'Error al generar ID para el examen: ' || SQLERRM;
+            RETURN;
+    END;
+
+    -- 10. Insertar el examen
+    BEGIN
+        INSERT INTO EXAMEN (
+            ID_EXAMEN, ID_DOCENTE, ID_TEMA, NOMBRE, DESCRIPCION,
+            FECHA_CREACION, FECHA_INICIO, FECHA_FIN, TIEMPO_LIMITE,
+            PESO_CURSO, UMBRAL_APROBACION, CANTIDAD_PREGUNTAS_TOTAL,
+            CANTIDAD_PREGUNTAS_PRESENTAR, ID_ESTADO, ID_CATEGORIA,
+            INTENTOS_PERMITIDOS, MOSTRAR_RESULTADOS, PERMITIR_RETROALIMENTACION,
+            FECHA_ULTIMA_MODIFICACION, ID_USUARIO_ULTIMA_MODIFICACION
+        ) VALUES (
+            v_id_examen, p_id_docente, p_id_tema, p_nombre, p_descripcion,
+            SYSDATE, p_fecha_inicio, p_fecha_fin, p_tiempo_limite,
+            p_peso_curso, p_umbral_aprobacion, p_cantidad_preguntas_total,
+            p_cantidad_preguntas_presentar, v_id_estado, p_id_categoria,
+            p_intentos_permitidos, p_mostrar_resultados, p_permitir_retroalimentacion,
+            SYSDATE, p_id_docente
+        );
+
+        -- Asignar valores de salida
+        p_id_examen_creado := v_id_examen;
+        p_codigo_resultado := COD_EXITO;
+        p_mensaje_resultado := 'Examen creado exitosamente. ID: ' || v_id_examen;
+        
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            ROLLBACK;
+            p_codigo_resultado := COD_ERROR_REGISTRO;
+            p_mensaje_resultado := 'Error al registrar el examen: ' || SUBSTR(SQLERRM, 1, 200);
+    END;
+EXCEPTION
+    WHEN OTHERS THEN
+        p_codigo_resultado := COD_ERROR_REGISTRO;
+        p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 200);
+END SP_CREAR_EXAMEN;
