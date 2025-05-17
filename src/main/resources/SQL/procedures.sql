@@ -141,9 +141,10 @@ FOR EACH ROW
 BEGIN
     -- Verificar si se alcanzaron los 3 intentos fallidos
     IF :NEW.INTENTOS_FALLIDOS >= 3 AND (:OLD.INTENTOS_FALLIDOS < 3 OR :OLD.FECHA_BLOQUEO IS NULL) THEN
-        -- Actualizar la fecha de bloqueo automáticamente
+        -- Actualizar la fecha de bloqueo y el estado a bloqueado automáticamente
         UPDATE USUARIO
-        SET FECHA_BLOQUEO = SYSTIMESTAMP
+        SET FECHA_BLOQUEO = SYSTIMESTAMP,
+            ID_ESTADO = 3  -- Cambiar estado a "Bloqueado"
         WHERE ID_USUARIO = :NEW.ID_USUARIO;
     END IF;
 END;
@@ -163,6 +164,7 @@ CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
     v_usuario           USUARIO%ROWTYPE;
     v_intentos_actuales NUMBER;
     v_fecha_actual      TIMESTAMP := SYSTIMESTAMP;
+    v_estado_nombre     VARCHAR2(100);
 
     -- Códigos de resultado estandarizados
     COD_EXITO                   CONSTANT NUMBER := 1;   -- Mantener 1 para éxito para compatibilidad
@@ -204,19 +206,50 @@ BEGIN
             RETURN;
     END;
 
-    -- Verificar estado del usuario
-    IF v_usuario.ID_ESTADO != 1 THEN -- 1 = Activo en tu tabla ESTADO_GENERAL
+    -- Verificar estado del usuario (Activo, Inactivo, Bloqueado)
+    BEGIN
+        SELECT NOMBRE INTO v_estado_nombre
+        FROM ESTADO_GENERAL
+        WHERE ID_ESTADO = v_usuario.ID_ESTADO;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            v_estado_nombre := 'Desconocido';
+    END;
+
+    -- Verificar si la cuenta está bloqueada (estado 3) o inactiva (estado 2)
+    IF v_usuario.ID_ESTADO = 3 THEN
+        p_resultado := COD_CUENTA_BLOQUEADA;
+        p_mensaje := 'Tu cuenta está bloqueada. Contacta a soporte técnico o espera 30 minutos.';
+        RETURN;
+    ELSIF v_usuario.ID_ESTADO != 1 THEN
         p_resultado := COD_USUARIO_INACTIVO;
-        p_mensaje := 'Tu cuenta está inactiva o bloqueada';
+        p_mensaje := 'Tu cuenta está inactiva o suspendida. Estado: ' || v_estado_nombre;
         RETURN;
     END IF;
 
-    -- Verificar si la cuenta está bloqueada temporalmente por intentos fallidos
+    -- Verificar bloqueo temporal por intentos fallidos (incluso si el estado sigue siendo Activo)
     IF v_usuario.FECHA_BLOQUEO IS NOT NULL AND
        v_usuario.FECHA_BLOQUEO > v_fecha_actual - INTERVAL '30' MINUTE THEN
+        -- Asegurar que el estado sea coherente con el bloqueo temporal
+        UPDATE USUARIO
+        SET ID_ESTADO = 3
+        WHERE ID_USUARIO = v_usuario.ID_USUARIO
+        AND ID_ESTADO = 1;
+        
         p_resultado := COD_CUENTA_BLOQUEADA;
         p_mensaje := 'Cuenta bloqueada por múltiples intentos fallidos. Intenta nuevamente en 30 minutos.';
         RETURN;
+    END IF;
+
+    -- Si la cuenta estuvo bloqueada pero pasaron los 30 minutos, desbloquearla automáticamente
+    IF v_usuario.FECHA_BLOQUEO IS NOT NULL AND
+       v_usuario.FECHA_BLOQUEO <= v_fecha_actual - INTERVAL '30' MINUTE AND
+       v_usuario.ID_ESTADO = 3 THEN
+        UPDATE USUARIO
+        SET ID_ESTADO = 1,
+            FECHA_BLOQUEO = NULL,
+            INTENTOS_FALLIDOS = 0
+        WHERE ID_USUARIO = v_usuario.ID_USUARIO;
     END IF;
 
     -- Comparar contraseñas (mantenido en texto plano según solicitud)
@@ -258,7 +291,8 @@ BEGIN
         
         -- Para tests: re-obtener los datos actualizados del usuario
         BEGIN
-            SELECT FECHA_BLOQUEO INTO v_usuario.FECHA_BLOQUEO
+            SELECT ID_ESTADO, FECHA_BLOQUEO 
+            INTO v_usuario.ID_ESTADO, v_usuario.FECHA_BLOQUEO
             FROM USUARIO
             WHERE ID_USUARIO = v_usuario.ID_USUARIO;
         EXCEPTION
@@ -267,7 +301,7 @@ BEGIN
         END;
 
         -- Determinar mensaje según intentos
-        IF v_intentos_actuales >= 3 OR v_usuario.FECHA_BLOQUEO IS NOT NULL THEN
+        IF v_intentos_actuales >= 3 OR v_usuario.FECHA_BLOQUEO IS NOT NULL OR v_usuario.ID_ESTADO = 3 THEN
             p_resultado := COD_CUENTA_BLOQUEADA;
             p_mensaje := 'Contraseña incorrecta. Cuenta bloqueada por 30 minutos.';
         ELSE
@@ -295,44 +329,44 @@ CREATE OR REPLACE PROCEDURE SP_CREAR_EXAMEN (
     -- Parámetros de entrada básicos
     p_id_docente                   IN  NUMBER,
     p_id_tema                      IN  NUMBER,
-    p_nombre                       IN  VARCHAR2,
-    p_descripcion                  IN  VARCHAR2,
+    p_nombre                        IN  VARCHAR2,
+    p_descripcion                   IN  VARCHAR2,
     -- Parámetros de configuración
-    p_fecha_inicio                 IN  TIMESTAMP,
-    p_fecha_fin                    IN  TIMESTAMP,
-    p_tiempo_limite                IN  NUMBER,
-    p_peso_curso                   IN  NUMBER,
-    p_umbral_aprobacion            IN  NUMBER,
-    p_cantidad_preguntas_total     IN  NUMBER,
-    p_cantidad_preguntas_presentar IN  NUMBER,
-    p_id_categoria                 IN  NUMBER,
-    p_intentos_permitidos          IN  NUMBER DEFAULT 1,
-    p_mostrar_resultados           IN  NUMBER DEFAULT 1,
-    p_permitir_retroalimentacion   IN  NUMBER DEFAULT 1,
+    p_fecha_inicio                  IN  TIMESTAMP,
+    p_fecha_fin                     IN  TIMESTAMP,
+    p_tiempo_limite                 IN  NUMBER,
+    p_peso_curso                    IN  NUMBER,
+    p_umbral_aprobacion             IN  NUMBER,
+    p_cantidad_preguntas_total      IN  NUMBER,
+    p_cantidad_preguntas_presentar   IN  NUMBER,
+    p_id_categoria                  IN  NUMBER,
+    p_intentos_permitidos           IN  NUMBER DEFAULT 1,
+    p_mostrar_resultados            IN  NUMBER DEFAULT 1,
+    p_permitir_retroalimentacion    IN  NUMBER DEFAULT 1,
     -- Parámetros de salida
-    p_id_examen_creado             OUT NUMBER,
-    p_codigo_resultado             OUT NUMBER,
-    p_mensaje_resultado            OUT VARCHAR2
+    p_id_examen_creado              OUT NUMBER,
+    p_codigo_resultado              OUT NUMBER,
+    p_mensaje_resultado             OUT VARCHAR2
 )
 IS
     -- Variables locales
-    v_id_examen            NUMBER;
-    v_tema_existe          NUMBER := 0;
-    v_docente_existe       NUMBER := 0;
-    v_categoria_existe     NUMBER := 0;
-    v_secuencia_existe     NUMBER := 0;
-    v_id_estado            NUMBER := 1; -- Por defecto activo
+    v_id_examen             NUMBER;
+    v_tema_existe           NUMBER := 0;
+    v_docente_existe        NUMBER := 0;
+    v_categoria_existe      NUMBER := 0;
+    v_secuencia_existe      NUMBER := 0;
+    v_id_estado             NUMBER := 1; -- Por defecto activo
     
     -- Códigos de resultado
-    COD_EXITO                   CONSTANT NUMBER := 0;
-    COD_ERROR_PARAMETROS        CONSTANT NUMBER := 1;
-    COD_DOCENTE_NO_EXISTE       CONSTANT NUMBER := 2;
-    COD_TEMA_NO_EXISTE          CONSTANT NUMBER := 3;
-    COD_CATEGORIA_NO_EXISTE     CONSTANT NUMBER := 4;
-    COD_ERROR_FECHAS            CONSTANT NUMBER := 5;
-    COD_ERROR_CANTIDADES        CONSTANT NUMBER := 6;
-    COD_ERROR_REGISTRO          CONSTANT NUMBER := 7;
-    COD_ERROR_SECUENCIA         CONSTANT NUMBER := 8;
+    COD_EXITO                    CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS         CONSTANT NUMBER := 1;
+    COD_DOCENTE_NO_EXISTE        CONSTANT NUMBER := 2;
+    COD_TEMA_NO_EXISTE           CONSTANT NUMBER := 3;
+    COD_CATEGORIA_NO_EXISTE      CONSTANT NUMBER := 4;
+    COD_ERROR_FECHAS             CONSTANT NUMBER := 5;
+    COD_ERROR_CANTIDADES         CONSTANT NUMBER := 6;
+    COD_ERROR_REGISTRO           CONSTANT NUMBER := 7;
+    COD_ERROR_SECUENCIA          CONSTANT NUMBER := 8;
 BEGIN
     -- Inicializar parámetros de salida
     p_id_examen_creado := NULL;

@@ -424,6 +424,7 @@ FOREIGN KEY (ID_ESTADO) REFERENCES ESTADO_GENERAL(ID_ESTADO);
 -- 1. Catálogos y configuración
 INSERT INTO ESTADO_GENERAL VALUES (1, 'Activo', 'Registro activo', 'GENERAL', 1);
 INSERT INTO ESTADO_GENERAL VALUES (2, 'Inactivo', 'Registro inactivo', 'GENERAL', 1);
+INSERT INTO ESTADO_GENERAL VALUES (3, 'Bloqueado', 'Registro bloqueado', 'GENERAL', 1);
 
 INSERT INTO TIPO_USUARIO VALUES (1, 'Estudiante', 'Usuario estudiante', 1);
 INSERT INTO TIPO_USUARIO VALUES (2, 'Docente', 'Usuario docente', 1);

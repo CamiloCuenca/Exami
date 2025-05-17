@@ -64,12 +64,35 @@ public class AutenticacionServiceTest {
     }
 
     @Test
+    @Rollback(false)
     void loginUsuarioBasico() {
-        // Usar credenciales de un usuario que ya existe en tu BD de prueba
-        LoginRequestDTO request = new LoginRequestDTO("juan.perez@uni.edu", "JuanP3rez#2024");
-        LoginResponseDTO response = service.loginUsuario(request);
-
-        assertEquals(1, response.codigoResultado());
+        // 1. Primero registramos un usuario de prueba con email único
+        String uniqueEmail = "test.login." + System.currentTimeMillis() + "@uqvirtual.edu.co";
+        String password = "Password123!";
+        
+        // Crear usuario de prueba
+        RegistroRequestDTO registroRequest = new RegistroRequestDTO();
+        registroRequest.setNombre("Test");
+        registroRequest.setApellido("Login");
+        registroRequest.setEmail(uniqueEmail);
+        registroRequest.setContrasena(password);
+        registroRequest.setIdTipoUsuario(1L);
+        registroRequest.setIdEstado(1L);
+        
+        RegistroResponseDTO registroResponse = service.registrarUsuario(registroRequest);
+        
+        // Verificar que el registro fue exitoso
+        assertEquals(0, registroResponse.getCodigoResultado(), 
+            "Error al registrar usuario para prueba de login: " + registroResponse.getMensajeResultado());
+        
+        // 2. Intentar login con el usuario recién creado
+        LoginRequestDTO loginRequest = new LoginRequestDTO(uniqueEmail, password);
+        LoginResponseDTO loginResponse = service.loginUsuario(loginRequest);
+        
+        // Verificar que el login fue exitoso (código 1)
+        System.out.println("Login respuesta - Código: " + loginResponse.codigoResultado() + 
+                          ", Mensaje: " + loginResponse.mensajeResultado());
+        assertEquals(1, loginResponse.codigoResultado(), "El login con credenciales correctas debe devolver código 1");
     }
 
     /**
