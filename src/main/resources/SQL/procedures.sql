@@ -134,8 +134,22 @@ END;
 END SP_REGISTRAR_USUARIO_COMPLETO;
 
 
--- PROCEDURE para iniciar sesión
+-- TRIGGER para bloquear cuentas automáticamente después de 3 intentos fallidos
+CREATE OR REPLACE TRIGGER TRG_BLOQUEO_CUENTA
+AFTER UPDATE OF INTENTOS_FALLIDOS ON USUARIO
+FOR EACH ROW
+BEGIN
+    -- Verificar si se alcanzaron los 3 intentos fallidos
+    IF :NEW.INTENTOS_FALLIDOS >= 3 AND (:OLD.INTENTOS_FALLIDOS < 3 OR :OLD.FECHA_BLOQUEO IS NULL) THEN
+        -- Actualizar la fecha de bloqueo automáticamente
+        UPDATE USUARIO
+        SET FECHA_BLOQUEO = SYSTIMESTAMP
+        WHERE ID_USUARIO = :NEW.ID_USUARIO;
+    END IF;
+END;
+/
 
+-- PROCEDURE para iniciar sesión con lógica simplificada (la lógica de bloqueo está en el trigger)
 CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
     p_correo            IN VARCHAR2,
     p_contrasena        IN VARCHAR2,
@@ -228,23 +242,17 @@ BEGIN
             FECHA_BLOQUEO = NULL,
             FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
         WHERE ID_USUARIO = v_usuario.ID_USUARIO;
-
-        -- Se ha eliminado la inserción en la tabla AUDITORIA
     ELSE
         -- Credenciales incorrectas
         v_intentos_actuales := NVL(v_usuario.INTENTOS_FALLIDOS, 0) + 1;
 
-        -- Actualizar intentos fallidos
+        -- Actualizar intentos fallidos (el trigger se encargará de bloquear si es necesario)
         UPDATE USUARIO
         SET INTENTOS_FALLIDOS = v_intentos_actuales,
-            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP,
-            FECHA_BLOQUEO = CASE
-                              WHEN v_intentos_actuales >= 3 THEN SYSTIMESTAMP
-                              ELSE FECHA_BLOQUEO
-                           END
+            FECHA_ULTIMO_ACCESO = SYSTIMESTAMP
         WHERE ID_USUARIO = v_usuario.ID_USUARIO;
 
-        -- Determinar mensaje según intentos
+        -- Determinar mensaje según intentos (sin modificar FECHA_BLOQUEO directamente)
         IF v_intentos_actuales >= 3 THEN
             p_resultado := COD_CUENTA_BLOQUEADA;
             p_mensaje := 'Contraseña incorrecta. Cuenta bloqueada por 30 minutos.';
@@ -252,8 +260,6 @@ BEGIN
             p_resultado := COD_CONTRASENA_INCORRECTA;
             p_mensaje := 'Contraseña incorrecta. Intentos restantes: ' || (3 - v_intentos_actuales);
         END IF;
-
-        -- Se ha eliminado la inserción en la tabla AUDITORIA
     END IF;
 
     COMMIT;
