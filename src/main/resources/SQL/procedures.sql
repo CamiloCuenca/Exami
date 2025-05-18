@@ -1,7 +1,5 @@
-CREATE SEQUENCE SEQ_ID_USUARIO START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
-SELECT sequence_name FROM user_sequences;
 
--- PROCEDURE para registrar un nuevo usuario
+--PROCEDURE PARA REGISTRAR USUARIO
 create or replace PROCEDURE SP_REGISTRAR_USUARIO_COMPLETO (
     p_nombre             IN  VARCHAR2,
     p_apellido           IN  VARCHAR2,
@@ -134,56 +132,6 @@ END;
 END SP_REGISTRAR_USUARIO_COMPLETO;
 
 
--- TRIGGER para bloquear cuentas automáticamente después de 3 intentos fallidos
--- Reemplazando el trigger anterior que causa el error de tabla mutante
-DROP TRIGGER TRG_BLOQUEO_CUENTA;
-
--- Creamos una tabla temporal para almacenar los IDs de usuarios que deben ser bloqueados
-CREATE GLOBAL TEMPORARY TABLE TEMP_USUARIOS_A_BLOQUEAR (
-    ID_USUARIO NUMBER PRIMARY KEY
-) ON COMMIT DELETE ROWS;
-
--- Creamos un trigger compuesto para resolver el problema de tabla mutante
-CREATE OR REPLACE TRIGGER TRG_BLOQUEO_CUENTA_COMPUESTO
-FOR UPDATE OF INTENTOS_FALLIDOS ON USUARIO
-COMPOUND TRIGGER
-    
-    -- Sección que se ejecuta antes del procesamiento de cada fila
-    BEFORE EACH ROW IS
-    BEGIN
-        -- Verificar si se alcanzaron los 3 intentos fallidos
-        IF :NEW.INTENTOS_FALLIDOS >= 3 AND (:OLD.INTENTOS_FALLIDOS < 3 OR :OLD.FECHA_BLOQUEO IS NULL) THEN
-            -- Insertar en la tabla temporal para procesar después
-            INSERT INTO TEMP_USUARIOS_A_BLOQUEAR (ID_USUARIO) 
-            VALUES (:NEW.ID_USUARIO);
-        END IF;
-    END BEFORE EACH ROW;
-    
-    -- Sección que se ejecuta después de que se han procesado todas las filas
-    AFTER STATEMENT IS
-        CURSOR c_usuarios_a_bloquear IS
-            SELECT ID_USUARIO FROM TEMP_USUARIOS_A_BLOQUEAR;
-        v_id_usuario NUMBER;
-    BEGIN
-        -- Procesar cada usuario que debe ser bloqueado
-        OPEN c_usuarios_a_bloquear;
-        LOOP
-            FETCH c_usuarios_a_bloquear INTO v_id_usuario;
-            EXIT WHEN c_usuarios_a_bloquear%NOTFOUND;
-            
-            -- Actualizar la fecha de bloqueo y el estado
-            UPDATE USUARIO
-            SET FECHA_BLOQUEO = SYSTIMESTAMP,
-                ID_ESTADO = 3  -- Estado "Bloqueado"
-            WHERE ID_USUARIO = v_id_usuario;
-        END LOOP;
-        CLOSE c_usuarios_a_bloquear;
-        
-        -- La tabla temporal se limpiará automáticamente (ON COMMIT DELETE ROWS)
-    END AFTER STATEMENT;
-    
-END TRG_BLOQUEO_CUENTA_COMPUESTO;
-/
 
 -- PROCEDURE para iniciar sesión con lógica simplificada (la lógica de bloqueo está en el trigger)
 CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
@@ -356,8 +304,9 @@ EXCEPTION
         p_mensaje := 'Error durante el inicio de sesión: ' || SUBSTR(SQLERRM, 1, 200);
 END LOGIN_USUARIO;
 
--- PROCEDURE para crear un nuevo examen
 
+
+-- PROCEDURE para crear un nuevo examen
 CREATE SEQUENCE SEQ_ID_EXAMEN START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
 CREATE OR REPLACE PROCEDURE SP_CREAR_EXAMEN (
@@ -546,6 +495,9 @@ END SP_CREAR_EXAMEN;
 CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
+
+
+-- PROCEDURE para agregar una nueva pregunta
 CREATE OR REPLACE PROCEDURE SP_AGREGAR_PREGUNTA (
     -- Parámetros básicos de la pregunta
     p_id_docente            IN NUMBER,
@@ -804,6 +756,9 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_AGREGAR_PREGUNTA;
+
+
+
 
 -- PROCEDURE para asignar preguntas a un examen
 CREATE SEQUENCE SEQ_ID_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
