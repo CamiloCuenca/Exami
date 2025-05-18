@@ -13,7 +13,11 @@ import org.springframework.jdbc.core.SqlParameter;
 import org.springframework.jdbc.core.simple.SimpleJdbcCall;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.sql.ResultSet;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import edu.uniquindio.exami.dto.ExamenCardDTO;
 import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
@@ -227,4 +231,48 @@ public class ExamenService {
             }
         }
     }
+
+    /**
+     * Obtiene la lista de exámenes de un estudiante para mostrar en cards
+     * @param idEstudiante ID del estudiante
+     * @return Lista de DTOs con información para las cards
+     */
+    public List<ExamenCardDTO> listarExamenesEstudiante(Long idEstudiante) {
+        List<ExamenCardDTO> examenes = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{ ? = call obtener_examenes_estudiante(?) }")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idEstudiante);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    ExamenCardDTO card = new ExamenCardDTO(
+                            rs.getLong("ID_EXAMEN"),
+                            rs.getString("NOMBRE"),
+                            rs.getString("DESCRIPCION"),
+                            rs.getString("FECHA_INICIO_FORMATEADA"),
+                            rs.getString("FECHA_FIN_FORMATEADA"),
+                            rs.getString("ESTADO"),
+                            rs.getString("NOMBRE_TEMA"),
+                            rs.getString("NOMBRE_CURSO")
+                    );
+                    examenes.add(card);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al listar exámenes del estudiante: " + e.getMessage());
+            throw new RuntimeException("Error al obtener exámenes", e);
+        }
+
+        return examenes;
+    }
+
 } 
