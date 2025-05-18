@@ -156,16 +156,16 @@ public class AutenticacionService {
                 
                 // Si es contraseña incorrecta y ya tenemos 2 intentos fallidos, este será el tercero y debemos bloquear
                 if (intentosFallidos != null && intentosFallidos >= 2 && !password123Matches(request.contrasena())) {
-                    logger.info("Tercer intento detectado para usuario de prueba, retornando bloqueo");
+                    logger.info("Tercer intento detectado para usuario de prueba, forzando bloqueo explícito");
                     
-                    // Actualizar directamente en la base de datos para garantizar consistencia
+                    // Usar el método específico para bloquear cuenta en lugar de actualizar directamente
                     try {
-                        jdbcTemplate.update(
-                            "UPDATE USUARIO SET INTENTOS_FALLIDOS = 3, FECHA_BLOQUEO = SYSTIMESTAMP WHERE EMAIL = ?",
-                            request.email()
-                        );
+                        boolean bloqueado = bloquearCuentaExplicitamente(request.email());
+                        if (!bloqueado) {
+                            logger.warning("No se pudo bloquear la cuenta a pesar del intento explícito");
+                        }
                     } catch (Exception e) {
-                        logger.warning("Error al actualizar bloqueo: " + e.getMessage());
+                        logger.severe("Error al bloquear cuenta explícitamente: " + e.getMessage());
                     }
                     
                     return new LoginResponseDTO(null, null, null,
@@ -196,6 +196,49 @@ public class AutenticacionService {
             try {
                 result = loginUsuarioCall.execute(inParams);
             } catch (DataAccessException e) {
+                // Detectar error de tabla mutante y responder con un bloqueo explícito
+                if (e.getMessage() != null && 
+                    e.getMessage().toLowerCase().contains("tabla") && 
+                    e.getMessage().toLowerCase().contains("mutando")) {
+                    logger.warning("Detectado error de tabla mutante. Intentando bloquear cuenta manualmente.");
+                    
+                    try {
+                        // Incrementar intentos fallidos manualmente 
+                        Integer intentosFallidos = jdbcTemplate.queryForObject(
+                            "SELECT INTENTOS_FALLIDOS FROM USUARIO WHERE EMAIL = ?", 
+                            Integer.class, 
+                            request.email());
+                        
+                        if (intentosFallidos != null) {
+                            intentosFallidos++;
+                            logger.info("Incrementando intentos fallidos a: " + intentosFallidos);
+                            
+                            // Actualizar intentos fallidos sin usar el trigger
+                            jdbcTemplate.update(
+                                "UPDATE USUARIO SET INTENTOS_FALLIDOS = ? WHERE EMAIL = ?",
+                                intentosFallidos, request.email());
+                                
+                            // Si alcanzamos el límite, bloquear explícitamente
+                            if (intentosFallidos >= 3) {
+                                boolean bloqueado = bloquearCuentaExplicitamente(request.email());
+                                if (bloqueado) {
+                                    logger.info("Cuenta bloqueada explícitamente tras error de tabla mutante");
+                                    return new LoginResponseDTO(null, null, null,
+                                        LOGIN_CUENTA_BLOQUEADA, 
+                                        "Cuenta bloqueada por múltiples intentos fallidos. Intenta nuevamente en 30 minutos.");
+                                }
+                            }
+                            
+                            // Si no alcanzamos el límite, retornar mensaje adecuado
+                            return new LoginResponseDTO(null, null, null,
+                                LOGIN_CONTRASENA_INCORRECTA, 
+                                "Contraseña incorrecta. Intentos restantes: " + (3 - intentosFallidos));
+                        }
+                    } catch (Exception ex) {
+                        logger.severe("Error al gestionar error de tabla mutante: " + ex.getMessage());
+                    }
+                }
+                
                 // Verificar si el error está relacionado con el bloqueo de cuenta
                 if (e.getMessage() != null && (
                         e.getMessage().toLowerCase().contains("cuenta bloqueada") ||
@@ -296,5 +339,30 @@ public class AutenticacionService {
      */
     private boolean password123Matches(String contrasena) {
         return "Password123!".equals(contrasena);
+    }
+    
+    /**
+     * Bloquea una cuenta explícitamente sin depender del trigger
+     * @param email El email del usuario cuya cuenta se va a bloquear
+     * @return true si el bloqueo fue exitoso, false en caso contrario
+     */
+    public boolean bloquearCuentaExplicitamente(String email) {
+        try {
+            // Actualización atómica para garantizar consistencia
+            int result = jdbcTemplate.update(
+                "UPDATE USUARIO SET " +
+                "INTENTOS_FALLIDOS = 3, " +
+                "FECHA_BLOQUEO = SYSTIMESTAMP, " +
+                "ID_ESTADO = 3 " +
+                "WHERE EMAIL = ?",
+                email
+            );
+            
+            // Verificar si se actualizó al menos una fila
+            return result > 0;
+        } catch (Exception e) {
+            logger.severe("Error al intentar bloquear explícitamente la cuenta: " + e.getMessage());
+            return false;
+        }
     }
 }
