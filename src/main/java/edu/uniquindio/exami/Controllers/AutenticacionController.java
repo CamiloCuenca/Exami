@@ -62,6 +62,24 @@ public class AutenticacionController {
         }
     }
 
+    @PostMapping("/recuperar-cuenta")
+    public ResponseEntity<LoginResponseDTO> recuperarCuenta(@RequestBody LoginRequestDTO request) {
+        LoginResponseDTO response = autenticacionService.recuperarCuenta(request);
+        
+        switch (response.codigoResultado()) {
+            case 1: // RECUPERACION_EXITOSA
+                return ResponseEntity.ok(response);
+            case -1: // USUARIO_NO_ENCONTRADO
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            case -2: // CUENTA_NO_BLOQUEADA
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            case -3: // TIEMPO_BLOQUEO_NO_COMPLETADO
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            default: // ERROR_INESPERADO
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
 
     
 }
