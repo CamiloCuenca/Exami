@@ -1,4 +1,3 @@
-
 --PROCEDURE PARA REGISTRAR USUARIO
 create or replace PROCEDURE SP_REGISTRAR_USUARIO_COMPLETO (
     p_nombre             IN  VARCHAR2,
@@ -975,3 +974,110 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_ASIGNAR_PREGUNTAS_EXAMEN;
+
+-- PROCEDURE para recuperar cuenta bloqueada
+CREATE OR REPLACE PROCEDURE RECUPERAR_CUENTA (
+    p_correo            IN VARCHAR2,
+    p_contrasena        IN VARCHAR2,
+    p_id_usuario        OUT NUMBER,
+    p_nombre_completo   OUT VARCHAR2,
+    p_tipo_usuario      OUT VARCHAR2,
+    p_resultado         OUT NUMBER,
+    p_mensaje           OUT VARCHAR2
+) AS
+    v_usuario           USUARIO%ROWTYPE;
+    v_fecha_actual      TIMESTAMP := SYSTIMESTAMP;
+    v_estado_nombre     VARCHAR2(100);
+
+    -- Códigos de resultado estandarizados
+    COD_EXITO                   CONSTANT NUMBER := 1;
+    COD_USUARIO_NO_ENCONTRADO   CONSTANT NUMBER := -1;
+    COD_CUENTA_NO_BLOQUEADA     CONSTANT NUMBER := -2;
+    COD_TIEMPO_NO_COMPLETADO    CONSTANT NUMBER := -3;
+    COD_CONTRASENA_INCORRECTA   CONSTANT NUMBER := -4;
+    COD_ERROR_DESCONOCIDO       CONSTANT NUMBER := -99;
+BEGIN
+    -- Inicializar parámetros de salida
+    p_id_usuario := NULL;
+    p_nombre_completo := NULL;
+    p_tipo_usuario := NULL;
+    p_resultado := COD_ERROR_DESCONOCIDO;
+    p_mensaje := 'Error durante la recuperación de cuenta';
+
+    -- Validación de parámetros de entrada
+    IF p_correo IS NULL OR LENGTH(TRIM(p_correo)) = 0 THEN
+        p_resultado := COD_USUARIO_NO_ENCONTRADO;
+        p_mensaje := 'El correo electrónico es obligatorio';
+        RETURN;
+    END IF;
+
+    IF p_contrasena IS NULL THEN
+        p_resultado := COD_CONTRASENA_INCORRECTA;
+        p_mensaje := 'La contraseña es obligatoria';
+        RETURN;
+    END IF;
+
+    -- Buscar usuario por correo electrónico
+    BEGIN
+        SELECT * INTO v_usuario
+        FROM USUARIO
+        WHERE EMAIL = p_correo;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_resultado := COD_USUARIO_NO_ENCONTRADO;
+            p_mensaje := 'Correo electrónico no registrado';
+            RETURN;
+    END;
+
+    -- Verificar si la cuenta está bloqueada
+    IF v_usuario.ID_ESTADO != 3 THEN
+        p_resultado := COD_CUENTA_NO_BLOQUEADA;
+        p_mensaje := 'La cuenta no está bloqueada';
+        RETURN;
+    END IF;
+
+    -- Verificar si han pasado los 30 minutos del bloqueo
+    IF v_usuario.FECHA_BLOQUEO IS NOT NULL AND
+       v_usuario.FECHA_BLOQUEO > v_fecha_actual - INTERVAL '30' MINUTE THEN
+        p_resultado := COD_TIEMPO_NO_COMPLETADO;
+        p_mensaje := 'Debes esperar 30 minutos desde el bloqueo para recuperar la cuenta';
+        RETURN;
+    END IF;
+
+    -- Verificar la contraseña
+    IF v_usuario.CONTRASENA != p_contrasena THEN
+        p_resultado := COD_CONTRASENA_INCORRECTA;
+        p_mensaje := 'Contraseña incorrecta';
+        RETURN;
+    END IF;
+
+    -- Desbloquear la cuenta
+    UPDATE USUARIO
+    SET ID_ESTADO = 1, -- Estado activo
+        INTENTOS_FALLIDOS = 0,
+        FECHA_BLOQUEO = NULL
+    WHERE ID_USUARIO = v_usuario.ID_USUARIO;
+
+    -- Obtener el nombre del tipo de usuario
+    BEGIN
+        SELECT NOMBRE INTO p_tipo_usuario
+        FROM TIPO_USUARIO
+        WHERE ID_TIPO_USUARIO = v_usuario.ID_TIPO_USUARIO;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            p_tipo_usuario := 'Desconocido';
+    END;
+
+    -- Configurar respuesta exitosa
+    p_id_usuario := v_usuario.ID_USUARIO;
+    p_nombre_completo := v_usuario.NOMBRE || ' ' || v_usuario.APELLIDO;
+    p_resultado := COD_EXITO;
+    p_mensaje := 'Cuenta recuperada exitosamente';
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        p_resultado := COD_ERROR_DESCONOCIDO;
+        p_mensaje := 'Error durante la recuperación de cuenta: ' || SUBSTR(SQLERRM, 1, 200);
+END RECUPERAR_CUENTA;

@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
 import java.sql.Types;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -31,6 +33,7 @@ public class AutenticacionService {
     private final JdbcTemplate jdbcTemplate;
     private SimpleJdbcCall registrarUsuarioCompletoCall;
     private SimpleJdbcCall loginUsuarioCall;
+    private SimpleJdbcCall recuperarCuentaCall;
 
     // Códigos de resultado del procedimiento almacenado
     private static final int COD_EXITO = 0;
@@ -83,6 +86,19 @@ public class AutenticacionService {
                         new SqlOutParameter("p_resultado", Types.NUMERIC),
                         new SqlOutParameter("p_mensaje", Types.VARCHAR),
                         new SqlParameter("p_ip_acceso", Types.VARCHAR)
+                );
+        
+        // Configuración para recuperar cuenta
+        this.recuperarCuentaCall = new SimpleJdbcCall(jdbcTemplate)
+                .withProcedureName("RECUPERAR_CUENTA")
+                .declareParameters(
+                        new SqlParameter("p_correo", Types.VARCHAR),
+                        new SqlParameter("p_contrasena", Types.VARCHAR),
+                        new SqlOutParameter("p_id_usuario", Types.NUMERIC),
+                        new SqlOutParameter("p_nombre_completo", Types.VARCHAR),
+                        new SqlOutParameter("p_tipo_usuario", Types.VARCHAR),
+                        new SqlOutParameter("p_resultado", Types.NUMERIC),
+                        new SqlOutParameter("p_mensaje", Types.VARCHAR)
                 );
     }
 
@@ -363,6 +379,48 @@ public class AutenticacionService {
         } catch (Exception e) {
             logger.severe("Error al intentar bloquear explícitamente la cuenta: " + e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Método para recuperar una cuenta bloqueada
+     * @param request Datos de la solicitud de recuperación
+     * @return LoginResponseDTO con el resultado de la operación
+     */
+    public LoginResponseDTO recuperarCuenta(LoginRequestDTO request) {
+        try {
+            logger.info("Intentando recuperar cuenta para: " + request.email());
+
+            // Validación básica
+            if (request.email() == null || request.email().isEmpty() ||
+                    request.contrasena() == null || request.contrasena().isEmpty()) {
+                return new LoginResponseDTO(null, null, null,
+                        -2, "Email y contraseña son requeridos");
+            }
+
+            Map<String, Object> inParams = new HashMap<>();
+            inParams.put("p_correo", request.email());
+            inParams.put("p_contrasena", request.contrasena());
+
+            Map<String, Object> result = recuperarCuentaCall.execute(inParams);
+
+            Long idUsuario = result.get("p_id_usuario") != null ?
+                    ((Number) result.get("p_id_usuario")).longValue() : null;
+            String nombreCompleto = (String) result.get("p_nombre_completo");
+            String tipoUsuario = (String) result.get("p_tipo_usuario");
+            int codigoResultado = ((Number) result.get("p_resultado")).intValue();
+            String mensajeResultado = (String) result.get("p_mensaje");
+
+            logger.info("Resultado de recuperación - Código: " + codigoResultado +
+                    ", Mensaje: " + mensajeResultado);
+
+            return new LoginResponseDTO(idUsuario, nombreCompleto, tipoUsuario,
+                    codigoResultado, mensajeResultado);
+
+        } catch (Exception e) {
+            logger.severe("Error al intentar recuperar cuenta: " + e.getMessage());
+            return new LoginResponseDTO(null, null, null,
+                    -99, "Error inesperado al recuperar la cuenta");
         }
     }
 }
