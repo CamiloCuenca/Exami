@@ -241,7 +241,7 @@ public class ExamenService {
         List<ExamenCardDTO> examenes = new ArrayList<>();
 
         try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{ ? = call obtener_examenes_estudiante(?) }")) {
+             CallableStatement stmt = conn.prepareCall("{? = call OBTENER_EXAMENES_ESTUDIANTE(?)}")) {
 
             // Registrar parámetros
             stmt.registerOutParameter(1, Types.REF_CURSOR);
