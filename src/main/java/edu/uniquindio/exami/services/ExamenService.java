@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
+import edu.uniquindio.exami.dto.ExamenDocenteDTO;
 
 @Service
 @Transactional
@@ -95,6 +96,69 @@ public class ExamenService {
                 request.getNombre() == null) {
                 return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS, 
                     "Los campos id_docente, id_tema y nombre son obligatorios");
+            }
+
+            // Validación de fechas
+            if (request.getFechaInicio() == null || request.getFechaFin() == null) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "Las fechas de inicio y fin son obligatorias");
+            }
+
+            if (request.getFechaInicio().isAfter(request.getFechaFin())) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "La fecha de inicio debe ser anterior a la fecha de fin");
+            }
+
+            // Validación de tiempo límite
+            if (request.getTiempoLimite() == null || request.getTiempoLimite() <= 0) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "El tiempo límite debe ser mayor a 0");
+            }
+
+            // Validación de peso del curso
+            if (request.getPesoCurso() == null || request.getPesoCurso() <= 0 || request.getPesoCurso() > 100) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "El peso del curso debe estar entre 1 y 100");
+            }
+
+            // Validación de umbral de aprobación
+            if (request.getUmbralAprobacion() == null || request.getUmbralAprobacion() < 0 || request.getUmbralAprobacion() > 100) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "El umbral de aprobación debe estar entre 0 y 100");
+            }
+
+            // Validación de cantidad de preguntas
+            if (request.getCantidadPreguntasTotal() == null || request.getCantidadPreguntasTotal() <= 0) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "La cantidad total de preguntas debe ser mayor a 0");
+            }
+
+            if (request.getCantidadPreguntasPresentar() == null || request.getCantidadPreguntasPresentar() <= 0) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "La cantidad de preguntas a presentar debe ser mayor a 0");
+            }
+
+            if (request.getCantidadPreguntasPresentar() > request.getCantidadPreguntasTotal()) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "La cantidad de preguntas a presentar no puede ser mayor a la cantidad total de preguntas");
+            }
+
+            // Validación de intentos permitidos
+            if (request.getIntentosPermitidos() != null && request.getIntentosPermitidos() <= 0) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "Los intentos permitidos deben ser mayores a 0");
+            }
+
+            // Validación de longitud del nombre
+            if (request.getNombre().length() > 100) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "El nombre del examen no puede exceder los 100 caracteres");
+            }
+
+            // Validación de longitud de la descripción
+            if (request.getDescripcion() != null && request.getDescripcion().length() > 500) {
+                return new ExamenResponseDTO(null, COD_ERROR_PARAMETROS,
+                    "La descripción del examen no puede exceder los 500 caracteres");
             }
 
             Map<String, Object> inParams = new HashMap<>();
@@ -270,6 +334,57 @@ public class ExamenService {
         } catch (SQLException e) {
             logger.severe("Error al listar exámenes del estudiante: " + e.getMessage());
             throw new RuntimeException("Error al obtener exámenes", e);
+        }
+
+        return examenes;
+    }
+
+    /**
+     * Obtiene la lista de exámenes creados por un docente
+     * @param idDocente ID del docente
+     * @return Lista de DTOs con información detallada de los exámenes
+     */
+    public List<ExamenDocenteDTO> listarExamenesDocente(Long idDocente) {
+        List<ExamenDocenteDTO> examenes = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call OBTENER_EXAMENES_DOCENTE(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idDocente);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    ExamenDocenteDTO examen = new ExamenDocenteDTO(
+                            rs.getLong("ID_EXAMEN"),
+                            rs.getString("NOMBRE"),
+                            rs.getString("DESCRIPCION"),
+                            rs.getString("FECHA_INICIO_FORMATEADA"),
+                            rs.getString("FECHA_FIN_FORMATEADA"),
+                            rs.getString("ESTADO"),
+                            rs.getString("NOMBRE_TEMA"),
+                            rs.getString("NOMBRE_CURSO"),
+                            rs.getInt("CANTIDAD_PREGUNTAS_TOTAL"),
+                            rs.getInt("CANTIDAD_PREGUNTAS_PRESENTAR"),
+                            rs.getInt("TIEMPO_LIMITE"),
+                            rs.getInt("PESO_CURSO"),
+                            rs.getInt("UMBRAL_APROBACION"),
+                            rs.getInt("INTENTOS_PERMITIDOS"),
+                            rs.getInt("MOSTRAR_RESULTADOS"),
+                            rs.getInt("PERMITIR_RETROALIMENTACION")
+                    );
+                    examenes.add(examen);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al listar exámenes del docente: " + e.getMessage());
+            throw new RuntimeException("Error al obtener exámenes del docente", e);
         }
 
         return examenes;

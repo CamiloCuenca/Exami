@@ -29,3 +29,41 @@ BEGIN
     RETURN v_resultado;
 END;
 /
+
+CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_DOCENTE(
+    p_id_docente NUMBER
+) RETURN SYS_REFCURSOR
+IS
+    v_resultado SYS_REFCURSOR;
+BEGIN
+    OPEN v_resultado FOR
+        SELECT
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') AS FECHA_INICIO_FORMATEADA,
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') AS FECHA_FIN_FORMATEADA,
+            CASE
+                WHEN CURRENT_TIMESTAMP < e.FECHA_INICIO THEN 'Pendiente'
+                WHEN CURRENT_TIMESTAMP BETWEEN e.FECHA_INICIO AND e.FECHA_FIN THEN 'Disponible'
+                ELSE 'Finalizado'
+            END AS ESTADO,
+            t.NOMBRE AS NOMBRE_TEMA,
+            c.NOMBRE AS NOMBRE_CURSO,
+            e.CANTIDAD_PREGUNTAS_TOTAL,
+            e.CANTIDAD_PREGUNTAS_PRESENTAR,
+            e.TIEMPO_LIMITE,
+            e.PESO_CURSO,
+            e.UMBRAL_APROBACION,
+            e.INTENTOS_PERMITIDOS,
+            e.MOSTRAR_RESULTADOS,
+            e.PERMITIR_RETROALIMENTACION
+        FROM PROYECTO_FINAL.EXAMEN e
+        JOIN PROYECTO_FINAL.TEMA t ON e.ID_TEMA = t.ID_TEMA
+        JOIN PROYECTO_FINAL.CURSO c ON t.ID_CURSO = c.ID_CURSO
+        WHERE e.ID_DOCENTE = p_id_docente
+        ORDER BY e.FECHA_INICIO DESC;
+
+    RETURN v_resultado;
+END;
+/

@@ -1,6 +1,7 @@
 package edu.uniquindio.exami.Controllers;
 
 import edu.uniquindio.exami.dto.ExamenCardDTO;
+import edu.uniquindio.exami.dto.ExamenDocenteDTO;
 import edu.uniquindio.exami.dto.ExamenRequestDTO;
 import edu.uniquindio.exami.dto.ExamenResponseDTO;
 import edu.uniquindio.exami.dto.PreguntaExamenRequestDTO;
@@ -39,7 +40,7 @@ public class ExamenController {
         }
     }
 
-    @PostMapping
+    @PostMapping("/crear-examen")
     public ResponseEntity<?> crearExamen(@RequestBody ExamenRequestDTO request) {
         try {
             ExamenResponseDTO response = examenService.crearExamen(request);
@@ -88,6 +89,24 @@ public class ExamenController {
                 .body(Map.of(
                     "success", false,
                     "message", "Error al asignar preguntas: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/mis-examenes-docente/{idDocente}")
+    public ResponseEntity<?> listarExamenesPorDocente(@PathVariable Long idDocente) {
+        try {
+            List<ExamenDocenteDTO> examenes = examenService.listarExamenesDocente(idDocente);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", examenes,
+                "message", "Exámenes obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los exámenes: " + e.getMessage()
                 ));
         }
     }
