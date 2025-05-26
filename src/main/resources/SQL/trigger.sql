@@ -125,7 +125,7 @@ CREATE TABLE PREGUNTAS_CON_BAJO_RENDIMIENTO (
     FECHA_DETECCION TIMESTAMP DEFAULT SYSTIMESTAMP
 );
 
---paquete para almacenar temporalmente los IDs de preguntas afectadas
+--Crear paquete para almacenar temporalmente los IDs de preguntas afectadas
 CREATE OR REPLACE PACKAGE PREGUNTAS_MUTANTES AS
     TYPE T_ID_LIST IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
     IDS T_ID_LIST;
