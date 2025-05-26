@@ -1,9 +1,6 @@
 package edu.uniquindio.exami.services;
 
-import edu.uniquindio.exami.dto.ExamenRequestDTO;
-import edu.uniquindio.exami.dto.ExamenResponseDTO;
-import edu.uniquindio.exami.dto.PreguntaExamenRequestDTO;
-import edu.uniquindio.exami.dto.PreguntaExamenResponseDTO;
+import edu.uniquindio.exami.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -17,7 +14,6 @@ import java.sql.ResultSet;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
-import edu.uniquindio.exami.dto.ExamenCardDTO;
 import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
@@ -29,7 +25,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
-import edu.uniquindio.exami.dto.ExamenDocenteDTO;
 
 @Service
 @Transactional
@@ -52,7 +47,7 @@ public class ExamenService {
     private static final Integer COD_ERROR_PORCENTAJES = 7;
     private static final Integer COD_ERROR_REGISTRO = 8;
     private static final Integer COD_ERROR_SECUENCIA = 9;
-    
+
     @Autowired
     private DataSource dataSource;
 
@@ -389,5 +384,133 @@ public class ExamenService {
 
         return examenes;
     }
+
+
+    @Transactional
+    public PreguntaResponseDTO agregarPregunta(PreguntaRequestDTO request) {
+        Connection connection = null;
+        try {
+            log.info("Intentando agregar pregunta con texto: {}", request.getTextoPregunta());
+
+            // Validaciones básicas
+            if (!validarRequest(request)) {
+                return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
+                        "Error en los parámetros de entrada");
+            }
+
+            connection = dataSource.getConnection();
+            OracleConnection oracleConn = connection.unwrap(OracleConnection.class);
+
+            // Convertir listas a arrays Oracle
+            Array textosArray = oracleConn.createARRAY("SYS.ODCIVARCHAR2LIST",
+                    request.getTextosOpciones().toArray());
+
+            Array correctasArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST",
+                    request.getSonCorrectas().toArray());
+
+            Array ordenesArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST",
+                    request.getOrdenes().toArray());
+
+            // Llamar al procedimiento almacenado
+            CallableStatement stmt = connection.prepareCall(
+                    "{ call SP_AGREGAR_PREGUNTA(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) }");
+
+            // Parámetros de entrada
+            stmt.setLong(1, request.getIdDocente());
+            stmt.setLong(2, request.getIdTema());
+            stmt.setLong(3, request.getIdNivelDificultad());
+            stmt.setLong(4, request.getIdTipoPregunta());
+            stmt.setString(5, request.getTextoPregunta());
+            stmt.setInt(6, request.getEsPublica());
+            stmt.setObject(7, request.getTiempoMaximo());
+            stmt.setDouble(8, request.getPorcentaje() != null ? request.getPorcentaje() : 100.0);
+            stmt.setObject(9, request.getIdPreguntaPadre());
+            stmt.setArray(10, textosArray);
+            stmt.setArray(11, correctasArray);
+            stmt.setArray(12, ordenesArray);
+
+            // Parámetros de salida
+            stmt.registerOutParameter(13, java.sql.Types.NUMERIC); // p_id_pregunta_creada
+            stmt.registerOutParameter(14, java.sql.Types.NUMERIC); // p_codigo_resultado
+            stmt.registerOutParameter(15, java.sql.Types.VARCHAR); // p_mensaje_resultado
+
+            // Ejecutar
+            stmt.execute();
+
+            // Obtener resultados
+            Long idPreguntaCreada = stmt.getLong(13);
+            Integer codigoResultado = stmt.getInt(14);
+            String mensajeResultado = stmt.getString(15);
+
+            return new PreguntaResponseDTO(
+                    idPreguntaCreada,
+                    codigoResultado,
+                    mensajeResultado
+            );
+
+        } catch (SQLException e) {
+            log.error("Error SQL al agregar pregunta: {}", e.getMessage());
+            return new PreguntaResponseDTO(null, COD_ERROR_REGISTRO,
+                    "Error técnico al agregar la pregunta: " + e.getMessage());
+        } catch (DataAccessException e) {
+            log.error("Error de acceso a datos al agregar pregunta: {}", e.getMessage());
+            return new PreguntaResponseDTO(null, COD_ERROR_REGISTRO,
+                    "Error de acceso a datos: " + e.getMessage());
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    private boolean validarRequest(PreguntaRequestDTO request) {
+        // Validar campos obligatorios
+        if (request.getIdDocente() == null ||
+                request.getIdTema() == null ||
+                request.getIdNivelDificultad() == null ||
+                request.getIdTipoPregunta() == null ||
+                request.getTextoPregunta() == null ||
+                request.getEsPublica() == null) {
+            log.warn("Faltan campos obligatorios en la solicitud");
+            return false;
+        }
+
+        // Validar opciones de respuesta
+        if (request.getTextosOpciones() == null || request.getTextosOpciones().isEmpty() ||
+                request.getSonCorrectas() == null || request.getSonCorrectas().isEmpty() ||
+                request.getOrdenes() == null || request.getOrdenes().isEmpty()) {
+            log.warn("Debe haber al menos una opción de respuesta");
+            return false;
+        }
+
+        // Validar que las listas tengan la misma longitud
+        if (request.getTextosOpciones().size() != request.getSonCorrectas().size() ||
+                request.getTextosOpciones().size() != request.getOrdenes().size()) {
+            log.warn("Las listas de opciones deben tener la misma longitud");
+            return false;
+        }
+
+        // Validar longitud del texto de la pregunta
+        if (request.getTextoPregunta().length() > 1000) {
+            log.warn("El texto de la pregunta excede los 1000 caracteres");
+            return false;
+        }
+
+        // Validar valores de las opciones correctas
+        for (Integer esCorrecta : request.getSonCorrectas()) {
+            if (esCorrecta != 0 && esCorrecta != 1) {
+                log.warn("Valores incorrectos en sonCorrectas (deben ser 0 o 1)");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+
 
 } 

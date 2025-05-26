@@ -1,11 +1,6 @@
 package edu.uniquindio.exami.Controllers;
 
-import edu.uniquindio.exami.dto.ExamenCardDTO;
-import edu.uniquindio.exami.dto.ExamenDocenteDTO;
-import edu.uniquindio.exami.dto.ExamenRequestDTO;
-import edu.uniquindio.exami.dto.ExamenResponseDTO;
-import edu.uniquindio.exami.dto.PreguntaExamenRequestDTO;
-import edu.uniquindio.exami.dto.PreguntaExamenResponseDTO;
+import edu.uniquindio.exami.dto.*;
 import edu.uniquindio.exami.services.ExamenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -15,9 +10,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+
+
 @RestController
 @RequestMapping("/api/examen")
 public class ExamenController {
+
+    private static final Integer COD_EXITO = 0;
 
     @Autowired
     private ExamenService examenService;
@@ -110,4 +109,18 @@ public class ExamenController {
                 ));
         }
     }
+
+
+    @PostMapping("/Crear")
+    public ResponseEntity<PreguntaResponseDTO> agregarPregunta(@RequestBody PreguntaRequestDTO request) {
+        PreguntaResponseDTO response = examenService.agregarPregunta(request);
+
+        if (response.getCodigoResultado() == COD_EXITO) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
 }
+
