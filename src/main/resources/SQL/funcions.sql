@@ -67,6 +67,7 @@ BEGIN
     RETURN v_resultado;
 END;
 /
+
 -- Obtener examenes disponibles  de  un estudainte
 CREATE OR REPLACE FUNCTION OBT_EXA_PROGRESO_EST(
     p_id_estudiante NUMBER
