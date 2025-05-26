@@ -130,7 +130,7 @@ WHEN OTHERS THEN
 END;
 END SP_REGISTRAR_USUARIO_COMPLETO;
 
-
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- PROCEDURE para iniciar sesión con lógica simplificada (la lógica de bloqueo está en el trigger)
 CREATE OR REPLACE PROCEDURE LOGIN_USUARIO (
@@ -303,7 +303,7 @@ EXCEPTION
         p_mensaje := 'Error durante el inicio de sesión: ' || SUBSTR(SQLERRM, 1, 200);
 END LOGIN_USUARIO;
 
-
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- PROCEDURE para crear un nuevo examen
 CREATE SEQUENCE SEQ_ID_EXAMEN START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
@@ -489,6 +489,8 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 200);
 END SP_CREAR_EXAMEN;
+
+--//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- PROCEDURE para agregar una nueva pregunta
 CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
@@ -757,7 +759,7 @@ EXCEPTION
 END SP_AGREGAR_PREGUNTA;
 
 
-
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- PROCEDURE para asignar preguntas a un examen
 CREATE SEQUENCE SEQ_ID_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
@@ -975,6 +977,8 @@ EXCEPTION
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_ASIGNAR_PREGUNTAS_EXAMEN;
 
+--/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 -- PROCEDURE para recuperar cuenta bloqueada
 CREATE OR REPLACE PROCEDURE RECUPERAR_CUENTA (
     p_correo            IN VARCHAR2,
@@ -1109,5 +1113,48 @@ BEGIN
         ORDER BY e.FECHA_INICIO DESC;
     
     RETURN v_cursor;
+END;
+/
+
+
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+--Procedimiento para asignar preguntas aleatorias a un examen
+CREATE OR REPLACE PROCEDURE ASIGNAR_PREGUNTAS_ALEATORIAS (
+    P_ID_EXAMEN      IN NUMBER,
+    P_TEMA           IN VARCHAR2,
+    P_CANTIDAD       IN NUMBER
+)
+IS
+    V_PORCENTAJE NUMBER := ROUND(100 / P_CANTIDAD, 2);
+BEGIN
+    -- Eliminar preguntas previas del examen si existen
+DELETE FROM EXAMEN_PREGUNTA
+WHERE ID_EXAMEN = P_ID_EXAMEN;
+
+-- Insertar nuevas preguntas aleatorias desde el tema indicado
+INSERT INTO EXAMEN_PREGUNTA (
+    ID_EXAMEN_PREGUNTA,
+    ID_EXAMEN,
+    ID_PREGUNTA,
+    PORCENTAJE,
+    ORDEN
+)
+SELECT
+    SEQ_EXAMEN_PREGUNTA.NEXTVAL,
+    P_ID_EXAMEN,
+    ID_PREGUNTA,
+    V_PORCENTAJE,
+    ROWNUM
+FROM (
+         SELECT ID_PREGUNTA
+         FROM PREGUNTA
+         WHERE ID_TEMA = (
+             SELECT ID_TEMA FROM TEMA WHERE NOMBRE = P_TEMA
+         )
+           AND ES_PUBLICA = 1
+         ORDER BY DBMS_RANDOM.VALUE
+     )
+WHERE ROWNUM <= P_CANTIDAD;
 END;
 /

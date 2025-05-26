@@ -30,6 +30,8 @@ BEGIN
 END;
 /
 
+--///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_DOCENTE(
     p_id_docente NUMBER
 ) RETURN SYS_REFCURSOR
@@ -67,6 +69,9 @@ BEGIN
     RETURN v_resultado;
 END;
 /
+
+--/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 -- Obtener examenes disponibles  de  un estudainte
 CREATE OR REPLACE FUNCTION OBT_EXA_PROGRESO_EST(
     p_id_estudiante NUMBER
@@ -97,10 +102,7 @@ RETURN v_resultado;
 END;
 /
 
-
-
-
-
+--///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CREATE OR REPLACE FUNCTION EXAMENES_EXPIRADOS_EST(
     p_id_estudiante NUMBER
@@ -131,6 +133,7 @@ RETURN v_resultado;
 END;
 /
 
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CREATE OR REPLACE FUNCTION EXAMENES_PENDIENTES_EST(
     p_id_estudiante NUMBER
@@ -161,6 +164,48 @@ RETURN v_resultado;
 END;
 /
 
+--/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*Funcion para Calcular la nota total obtenida por un estudiante en una presentación de
+examen específica, sumando el puntaje de cada respuesta correcta.*/
+CREATE OR REPLACE FUNCTION CALCULAR_NOTA_ESTUDIANTE (
+    P_ID_PRESENTACION IN NUMBER
+) RETURN NUMBER
+IS
+    V_TOTAL NUMBER := 0;
+BEGIN
+SELECT NVL(SUM(PUNTAJE_OBTENIDO), 0)
+INTO V_TOTAL
+FROM RESPUESTA_ESTUDIANTE
+WHERE ID_PRESENTACION = P_ID_PRESENTACION;
 
+RETURN V_TOTAL;
+END;
+/
 
+--////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/* Funcion para Calcular el porcentaje de preguntas respondidas correctamente por un estudiante en una presentación.*/
+CREATE OR REPLACE FUNCTION PORCENTAJE_PREGUNTAS_CORRECTAS (
+    P_ID_PRESENTACION IN NUMBER
+) RETURN NUMBER
+IS
+    V_CORRECTAS NUMBER := 0;
+    V_TOTAL     NUMBER := 0;
+BEGIN
+SELECT COUNT(*) INTO V_TOTAL
+FROM RESPUESTA_ESTUDIANTE
+WHERE ID_PRESENTACION = P_ID_PRESENTACION;
+
+SELECT COUNT(*) INTO V_CORRECTAS
+FROM RESPUESTA_ESTUDIANTE
+WHERE ID_PRESENTACION = P_ID_PRESENTACION
+  AND ES_CORRECTA = 1;
+
+IF V_TOTAL = 0 THEN
+        RETURN 0;
+ELSE
+        RETURN ROUND((V_CORRECTAS / V_TOTAL) * 100, 2);
+END IF;
+END;
+/
