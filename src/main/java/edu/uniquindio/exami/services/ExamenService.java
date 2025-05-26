@@ -512,5 +512,90 @@ public class ExamenService {
     }
 
 
+    /**
+     * Obtiene la lista de exámenes pendientes para un estudiante.
+     * @param idEstudiante ID del estudiante
+     * @return Lista de DTOs con información de los exámenes pendientes
+     */
+    public List<ExamenCardDTO> listarExamenesPendientesEstudiante(Long idEstudiante) {
+        List<ExamenCardDTO> examenesPendientes = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call EXAMENES_PENDIENTES_EST(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idEstudiante);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    ExamenCardDTO examen = new ExamenCardDTO(
+                            rs.getLong("ID_EXAMEN"),
+                            rs.getString("NOMBRE"),
+                            rs.getString("DESCRIPCION"),
+                            rs.getString("FECHA_INICIO_FORMATEADA"),
+                            rs.getString("FECHA_FIN_FORMATEADA"),
+                            rs.getString("ESTADO"),
+                            rs.getString("NOMBRE_TEMA"),
+                            rs.getString("NOMBRE_CURSO")
+                    );
+                    examenesPendientes.add(examen);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al listar exámenes pendientes del estudiante: " + e.getMessage());
+            throw new RuntimeException("Error al obtener exámenes pendientes", e);
+        }
+
+        return examenesPendientes;
+    }
+
+/**
+ * Obtiene la lista de exámenes en progreso para un estudiante.
+ * @param idEstudiante ID del estudiante
+ * @return Lista de DTOs con información de los exámenes en progreso
+ */
+public List<ExamenCardDTO> listarExamenesEnProgresoEstudiante(Long idEstudiante) {
+    List<ExamenCardDTO> examenesEnProgreso = new ArrayList<>();
+
+    try (Connection conn = dataSource.getConnection();
+         CallableStatement stmt = conn.prepareCall("{? = call OBT_EXA_PROGRESO_EST(?)}")) {
+
+        // Registrar parámetros
+        stmt.registerOutParameter(1, Types.REF_CURSOR);
+        stmt.setLong(2, idEstudiante);
+
+        // Ejecutar función
+        stmt.execute();
+
+        // Obtener el cursor de resultados
+        try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+            while (rs.next()) {
+                ExamenCardDTO examen = new ExamenCardDTO(
+                        rs.getLong("ID_EXAMEN"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION"),
+                        rs.getString("FECHA_INICIO_FORMATEADA"),
+                        rs.getString("FECHA_FIN_FORMATEADA"),
+                        rs.getString("ESTADO"),
+                        rs.getString("NOMBRE_TEMA"),
+                        rs.getString("NOMBRE_CURSO")
+                );
+                examenesEnProgreso.add(examen);
+            }
+        }
+
+    } catch (SQLException e) {
+        logger.severe("Error al listar exámenes en progreso del estudiante: " + e.getMessage());
+        throw new RuntimeException("Error al obtener exámenes en progreso", e);
+    }
+
+    return examenesEnProgreso;
+}
 
 } 
