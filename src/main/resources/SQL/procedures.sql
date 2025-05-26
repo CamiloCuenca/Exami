@@ -1081,3 +1081,33 @@ EXCEPTION
         p_resultado := COD_ERROR_DESCONOCIDO;
         p_mensaje := 'Error durante la recuperación de cuenta: ' || SUBSTR(SQLERRM, 1, 200);
 END RECUPERAR_CUENTA;
+
+CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_ESTUDIANTE(
+    p_id_estudiante IN NUMBER
+) RETURN SYS_REFCURSOR
+IS
+    v_cursor SYS_REFCURSOR;
+BEGIN
+    OPEN v_cursor FOR
+        SELECT 
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO_FORMATEADA,
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN_FORMATEADA,
+            eg.NOMBRE as ESTADO,
+            t.NOMBRE as NOMBRE_TEMA,
+            c.NOMBRE as NOMBRE_CURSO
+        FROM EXAMEN e
+        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
+        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
+        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
+        INNER JOIN MATRICULA m ON c.ID_CURSO = m.ID_CURSO
+        WHERE m.ID_ESTUDIANTE = p_id_estudiante
+        AND m.ID_ESTADO = 1  -- Matrícula activa
+        AND e.ID_ESTADO IN (1, 2)  -- Examen activo o programado
+        ORDER BY e.FECHA_INICIO DESC;
+    
+    RETURN v_cursor;
+END;
+/
