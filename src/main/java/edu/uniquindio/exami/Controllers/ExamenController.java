@@ -158,5 +158,24 @@ public class ExamenController {
             }
         }
 
+
+    @GetMapping("/expirados/{idEstudiante}")
+        public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
+            try {
+                List<ExamenCardDTO> examenesExpirados = examenService.listarExamenesExpiradosEstudiante(idEstudiante);
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", examenesExpirados,
+                    "message", "Exámenes expirados obtenidos exitosamente"
+                ));
+            } catch (Exception e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Error al obtener los exámenes expirados: " + e.getMessage()
+                    ));
+            }
+        }
+
 }
 

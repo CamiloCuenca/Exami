@@ -598,4 +598,47 @@ public List<ExamenCardDTO> listarExamenesEnProgresoEstudiante(Long idEstudiante)
     return examenesEnProgreso;
 }
 
+/**
+ * Obtiene la lista de exámenes expirados para un estudiante.
+ * @param idEstudiante ID del estudiante
+ * @return Lista de DTOs con información de los exámenes expirados
+ */
+public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) {
+    List<ExamenCardDTO> examenesExpirados = new ArrayList<>();
+
+    try (Connection conn = dataSource.getConnection();
+         CallableStatement stmt = conn.prepareCall("{? = call EXAMENES_EXPIRADOS_EST(?)}")) {
+
+        // Registrar parámetros
+        stmt.registerOutParameter(1, Types.REF_CURSOR);
+        stmt.setLong(2, idEstudiante);
+
+        // Ejecutar función
+        stmt.execute();
+
+        // Obtener el cursor de resultados
+        try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+            while (rs.next()) {
+                ExamenCardDTO examen = new ExamenCardDTO(
+                        rs.getLong("ID_EXAMEN"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION"),
+                        rs.getString("FECHA_INICIO_FORMATEADA"),
+                        rs.getString("FECHA_FIN_FORMATEADA"),
+                        rs.getString("ESTADO"),
+                        rs.getString("NOMBRE_TEMA"),
+                        rs.getString("NOMBRE_CURSO")
+                );
+                examenesExpirados.add(examen);
+            }
+        }
+
+    } catch (SQLException e) {
+        logger.severe("Error al listar exámenes expirados del estudiante: " + e.getMessage());
+        throw new RuntimeException("Error al obtener exámenes expirados", e);
+    }
+
+    return examenesExpirados;
+}
+
 } 
