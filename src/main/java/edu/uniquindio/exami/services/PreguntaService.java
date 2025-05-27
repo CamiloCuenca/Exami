@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
+
+import java.sql.CallableStatement;
 import java.sql.Types;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,6 +23,7 @@ import oracle.jdbc.OracleTypes;
 import oracle.sql.ARRAY;
 import oracle.sql.ArrayDescriptor;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 
@@ -32,6 +35,8 @@ public class PreguntaService {
     private static final Logger logger = Logger.getLogger(PreguntaService.class.getName());
     
     private final JdbcTemplate jdbcTemplate;
+    @Autowired
+    private DataSource dataSource;
     private SimpleJdbcCall agregarPreguntaCall;
 
     // Códigos de resultado del procedimiento almacenado
@@ -199,4 +204,32 @@ public class PreguntaService {
             }
         }
     }
+
+    public Double obtenerPorcentajeCorrectas(Long idPresentacion) {
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+            CallableStatement stmt = connection.prepareCall("{ ? = call PORCENTAJE_PREGUNTAS_CORRECTAS(?) }");
+
+            stmt.registerOutParameter(1, Types.NUMERIC);
+            stmt.setLong(2, idPresentacion);
+
+            stmt.execute();
+
+            return stmt.getDouble(1);
+
+        } catch (SQLException e) {
+            log.error("Error al obtener el porcentaje de respuestas correctas: {}", e.getMessage());
+            return null;
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
 } 

@@ -31,6 +31,8 @@ import oracle.jdbc.OracleConnection;
 @Slf4j
 public class ExamenService {
 
+
+    private static final int COD_ERROR = -1;
     private static final Logger logger = Logger.getLogger(ExamenService.class.getName());
     
     private final JdbcTemplate jdbcTemplate;
@@ -641,4 +643,42 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
     return examenesExpirados;
 }
 
-} 
+    public NotaResponseDTO calcularNotaEstudiante(Long idPresentacion) {
+        Connection connection = null;
+        try {
+            log.info("Calculando nota para la presentación ID: {}", idPresentacion);
+
+            connection = dataSource.getConnection();
+
+            // Preparar llamada a la función PL/SQL
+            CallableStatement stmt = connection.prepareCall("{ ? = call CALCULAR_NOTA_ESTUDIANTE(?) }");
+
+            // Registrar tipo de retorno (el primer parámetro es el return)
+            stmt.registerOutParameter(1, Types.NUMERIC);
+
+            // Setear parámetro de entrada
+            stmt.setLong(2, idPresentacion);
+
+            // Ejecutar
+            stmt.execute();
+
+            // Obtener resultado
+            Double notaTotal = stmt.getDouble(1);
+
+            return new NotaResponseDTO(notaTotal, COD_EXITO, "Cálculo exitoso");
+
+        } catch (SQLException e) {
+            log.error("Error SQL al calcular nota: {}", e.getMessage());
+            return new NotaResponseDTO(null, COD_ERROR, "Error técnico: " + e.getMessage());
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error cerrando conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+}
