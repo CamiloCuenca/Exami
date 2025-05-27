@@ -120,62 +120,43 @@ public class ExamenController {
         }
     }
 
-    @GetMapping("/pendientes/{idEstudiante}")
-    public ResponseEntity<?> listarExamenesPendientesEstudiante(@PathVariable Long idEstudiante) {
+    @GetMapping("/en-progreso/{idEstudiante}")
+    public ResponseEntity<?> listarExamenesEnProgresoEstudiante(@PathVariable Long idEstudiante) {
         try {
-            List<ExamenCardDTO> examenesPendientes = examenService.listarExamenesPendientesEstudiante(idEstudiante);
+            List<ExamenCardDTO> examenesEnProgreso = examenService.listarExamenesEnProgresoEstudiante(idEstudiante);
             return ResponseEntity.ok(Map.of(
                 "success", true,
-                "data", examenesPendientes,
-                "message", "Exámenes pendientes obtenidos exitosamente"
+                "data", examenesEnProgreso,
+                "message", "Exámenes en progreso obtenidos exitosamente"
             ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                     "success", false,
-                    "message", "Error al obtener los exámenes pendientes: " + e.getMessage()
+                    "message", "Error al obtener los exámenes en progreso: " + e.getMessage()
                 ));
         }
     }
 
-    @GetMapping("/en-progreso/{idEstudiante}")
-        public ResponseEntity<?> listarExamenesEnProgresoEstudiante(@PathVariable Long idEstudiante) {
-            try {
-                List<ExamenCardDTO> examenesEnProgreso = examenService.listarExamenesEnProgresoEstudiante(idEstudiante);
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "data", examenesEnProgreso,
-                    "message", "Exámenes en progreso obtenidos exitosamente"
-                ));
-            } catch (Exception e) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                        "success", false,
-                        "message", "Error al obtener los exámenes en progreso: " + e.getMessage()
-                    ));
-            }
-        }
-
     @GetMapping("/expirados/{idEstudiante}")
-        public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
-            try {
-                List<ExamenCardDTO> examenesExpirados = examenService.listarExamenesExpiradosEstudiante(idEstudiante);
-                return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "data", examenesExpirados,
-                    "message", "Exámenes expirados obtenidos exitosamente"
+    public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
+        try {
+            List<ExamenCardDTO> examenesExpirados = examenService.listarExamenesExpiradosEstudiante(idEstudiante);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", examenesExpirados,
+                "message", "Exámenes expirados obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los exámenes expirados: " + e.getMessage()
                 ));
-            } catch (Exception e) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                        "success", false,
-                        "message", "Error al obtener los exámenes expirados: " + e.getMessage()
-                    ));
-            }
         }
+    }
 
-
-        @GetMapping("/estudiante-ui/{idEstudiante}")
+    @GetMapping("/estudiante-ui/{idEstudiante}")
     public ResponseEntity<?> obtenerExamenesEstudianteUI(@PathVariable Long idEstudiante) {
         try {
             List<ExamenEstudianteDetalleDTO> examenes = examenService.obtenerExamenesEstudianteUI(idEstudiante);
@@ -189,6 +170,170 @@ public class ExamenController {
                 .body(Map.of(
                     "success", false,
                     "message", "Error al obtener los exámenes: " + e.getMessage()
+                ));
+        }
+    }
+
+    @PostMapping("/iniciar/{idExamen}/{idEstudiante}")
+    public ResponseEntity<?> iniciarExamen(
+            @PathVariable Long idExamen,
+            @PathVariable Long idEstudiante) {
+        try {
+            PresentacionExamenDTO presentacion = examenService.iniciarExamen(idExamen, idEstudiante);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", presentacion,
+                "message", "Examen iniciado exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al iniciar el examen: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/preguntas/{idPresentacion}")
+    public ResponseEntity<?> obtenerPreguntasExamen(@PathVariable Long idPresentacion) {
+        try {
+            List<PreguntaExamenDTO> preguntas = examenService.obtenerPreguntasExamen(idPresentacion);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", preguntas,
+                "message", "Preguntas obtenidas exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener las preguntas: " + e.getMessage()
+                ));
+        }
+    }
+
+    @PostMapping("/responder/{idPresentacion}")
+    public ResponseEntity<?> responderPregunta(
+            @PathVariable Long idPresentacion,
+            @RequestBody RespuestaEstudianteDTO respuesta) {
+        try {
+            RespuestaResponseDTO response = examenService.responderPregunta(idPresentacion, respuesta);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", response,
+                "message", "Respuesta registrada exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al registrar la respuesta: " + e.getMessage()
+                ));
+        }
+    }
+
+    @PostMapping("/finalizar/{idPresentacion}")
+    public ResponseEntity<?> finalizarExamen(@PathVariable Long idPresentacion) {
+        try {
+            PresentacionExamenDTO presentacion = examenService.finalizarExamen(idPresentacion);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", presentacion,
+                "message", "Examen finalizado exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al finalizar el examen: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/categorias")
+    public ResponseEntity<?> obtenerCategoriasExamenes() {
+        try {
+            List<CategoriaDTO> categorias = examenService.obtenerCategoriasExamenes();
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", categorias,
+                "message", "Categorías obtenidas exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener las categorías: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/categorias/{idCategoria}")
+    public ResponseEntity<?> obtenerCategoriaExamenPorId(@PathVariable Long idCategoria) {
+        try {
+            CategoriaDTO categoria = examenService.obtenerCategoriaExamenPorId(idCategoria);
+            if (categoria != null) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", categoria,
+                    "message", "Categoría obtenida exitosamente"
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Categoría no encontrada"
+                    ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener la categoría: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/temas")
+    public ResponseEntity<?> obtenerTemas() {
+        try {
+            List<TemaDTO> temas = examenService.obtenerTemas();
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", temas,
+                "message", "Temas obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los temas: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/temas/{idTema}")
+    public ResponseEntity<?> obtenerTemaPorId(@PathVariable Long idTema) {
+        try {
+            TemaDTO tema = examenService.obtenerTemaPorId(idTema);
+            if (tema != null) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", tema,
+                    "message", "Tema obtenido exitosamente"
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Tema no encontrado"
+                    ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener el tema: " + e.getMessage()
                 ));
         }
     }
