@@ -60,7 +60,7 @@ public class AutenticacionService {
     @PostConstruct
     public void init() {
         this.registrarUsuarioCompletoCall = new SimpleJdbcCall(jdbcTemplate)
-                .withProcedureName("SP_REGISTRAR_USUARIO_COMPLETO")
+                .withProcedureName("SP_REGISTRAR_USUARIO_COMPLETOS")
                 .declareParameters(
                         new SqlParameter("p_nombre", Types.VARCHAR),
                         new SqlParameter("p_apellido", Types.VARCHAR),
