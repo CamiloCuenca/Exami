@@ -175,13 +175,10 @@ public class ExamenController {
         }
 
 
-
-    @GetMapping("/estado/{idEstado}/{idEstudiante}")
-    public ResponseEntity<?> obtenerExamenesPorEstadoYEstudiante(
-            @PathVariable Integer idEstado,
-            @PathVariable Integer idEstudiante) {
+        @GetMapping("/estudiante-ui/{idEstudiante}")
+    public ResponseEntity<?> obtenerExamenesEstudianteUI(@PathVariable Long idEstudiante) {
         try {
-            List<ExamenEstadoDTO> examenes = examenService.obtenerExamenesPorEstadoYEstudiante(idEstado, idEstudiante);
+            List<ExamenEstudianteDetalleDTO> examenes = examenService.obtenerExamenesEstudianteUI(idEstudiante);
             return ResponseEntity.ok(Map.of(
                 "success", true,
                 "data", examenes,

@@ -38,6 +38,7 @@ public class ExamenService {
     
     private final JdbcTemplate jdbcTemplate;
     private SimpleJdbcCall crearExamenCall;
+    private SimpleJdbcCall obtenerExamenesEstudianteUICall;
 
     // Códigos de resultado para respuesta al cliente
     private static final Integer COD_EXITO = 0;
@@ -83,6 +84,14 @@ public class ExamenService {
                         new SqlOutParameter("p_codigo_resultado", Types.NUMERIC),
                         new SqlOutParameter("p_mensaje_resultado", Types.VARCHAR)
                 );
+
+        this.obtenerExamenesEstudianteUICall = new SimpleJdbcCall(jdbcTemplate)
+                .withProcedureName("OBTENER_EXAMENES_ESTUDIANTE_UI")
+                .declareParameters(
+                        new SqlParameter("p_id_estudiante", Types.NUMERIC),
+                        new SqlOutParameter("p_cursor", Types.REF, "SYS_REFCURSOR")
+                )
+                .returningResultSet("p_cursor", new ExamenEstudianteRowMapper());
     }
 
     public ExamenResponseDTO crearExamen(ExamenRequestDTO request) {
@@ -723,4 +732,78 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
             throw new RuntimeException("Error al obtener los exámenes: " + e.getMessage());
         }
     }
+
+     /**
+     * Obtiene la lista de exámenes relevantes para un estudiante con su estado para la UI.
+     *
+     * @param idEstudiante El ID del estudiante.
+     * @return Una lista de ExamenEstudianteDetalleDTO.
+     */
+    public List<ExamenEstudianteDetalleDTO> obtenerExamenesEstudianteUI(Long idEstudiante) {
+        log.info("Llamando procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI para estudiante ID: {}", idEstudiante);
+
+        // Preparar los parámetros de entrada
+        Map<String, Object> inParams = new java.util.HashMap<>();
+        inParams.put("p_id_estudiante", idEstudiante);
+
+        // Ejecutar la llamada al procedimiento
+        Map<String, Object> result = obtenerExamenesEstudianteUICall.execute(inParams);
+
+        // SimpleJdbcCall ya mapea el cursor a la lista usando el RowMapper configurado
+        // El nombre de la clave en el mapa de resultado debe coincidir con el nombre del parámetro de salida del cursor ("p_cursor")
+        List<ExamenEstudianteDetalleDTO> examenes = (List<ExamenEstudianteDetalleDTO>) result.get("p_cursor");
+
+        if (examenes == null) {
+             log.warn("El procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI devolvió null para el cursor.");
+             return java.util.Collections.emptyList();
+        }
+
+        log.info("Procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI retornó {} exámenes.", examenes.size());
+        return examenes;
+    }
+
+
+
+    /**
+     * RowMapper para convertir cada fila del cursor a un objeto ExamenEstudianteDetalleDTO.
+     * Debe coincidir exactamente con las columnas y el orden del SELECT en el procedimiento PL/SQL.
+     */
+    private static class ExamenEstudianteRowMapper implements RowMapper<ExamenEstudianteDetalleDTO> {
+        @Override
+        public ExamenEstudianteDetalleDTO mapRow(ResultSet rs, int rowNum) throws SQLException {
+            return new ExamenEstudianteDetalleDTO(
+                    rs.getLong("ID_EXAMEN"),                             // idExamen
+                    rs.getString("NOMBRE"),                              // nombreExamen
+                    rs.getString("DESCRIPCION"),                         // descripcion
+                    rs.getString("FECHA_INICIO_EXAMEN_FORMATEADA"),      // fechaInicioExamenFormateada
+                    rs.getString("FECHA_FIN_EXAMEN_FORMATEADA"),         // fechaFinExamenFormateada
+                    rs.getObject("TIEMPO_LIMITE", Integer.class),        // tiempoLimite
+                    rs.getBigDecimal("PESO_CURSO"),                      // pesoCurso
+                    rs.getBigDecimal("UMBRAL_APROBACION"),               // umbralAprobacion
+                    rs.getObject("CANTIDAD_PREGUNTAS_TOTAL", Integer.class), // cantidadPreguntasTotal
+                    rs.getObject("CANTIDAD_PREGUNTAS_PRESENTAR", Integer.class), // cantidadPreguntasPresentar
+                    rs.getObject("INTENTOS_PERMITIDOS", Integer.class),  // intentosPermitidos
+                    rs.getObject("MOSTRAR_RESULTADOS", Integer.class),   // mostrarResultados
+                    rs.getObject("PERMITIR_RETROALIMENTACION", Integer.class), // permitirRetroalimentacion
+                    rs.getString("NOMBRE_TEMA"),                         // nombreTema
+                    rs.getString("NOMBRE_CURSO"),                        // nombreCurso
+                    rs.getString("NOMBRE_ESTADO_EXAMEN"),                // nombreEstadoExamen
+                    rs.getObject("ID_PRESENTACION", Long.class),         // idPresentacion
+                    rs.getBigDecimal("PUNTAJE_OBTENIDO"),                // puntajeObtenido
+                    rs.getObject("TIEMPO_UTILIZADO", Integer.class),     // tiempoUtilizado
+                    rs.getTimestamp("FECHA_INICIO_PRESENTACION"),        // fechaInicioPresentacion
+                    rs.getTimestamp("FECHA_FIN_PRESENTACION"),           // fechaFinPresentacion
+                    rs.getObject("ID_ESTADO_PRESENTACION", Integer.class), // idEstadoPresentacion
+                    rs.getString("NOMBRE_ESTADO_PRESENTACION"),          // nombreEstadoPresentacion
+                    rs.getString("ESTADO_UI")                            // estadoUI
+            );
+        }
+    }
+
+
+
+
+
+    
+   
 }
