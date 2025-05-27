@@ -1,7 +1,4 @@
-
 -- Elimina datos en orden inverso a las dependencias
-DELETE FROM AUDITORIA;
-DELETE FROM NOTIFICACION;
 DELETE FROM RESPUESTA_ESTUDIANTE;
 DELETE FROM PRESENTACION_EXAMEN;
 DELETE FROM EXAMEN_PREGUNTA;
@@ -26,6 +23,16 @@ DELETE FROM NIVEL_DIFICULTAD;
 DELETE FROM TIPO_PREGUNTA;
 DELETE FROM TIPO_USUARIO;
 DELETE FROM ESTADO_GENERAL;
+DELETE FROM AUDITORIA;
+DELETE FROM NOTIFICACION;
+DELETE FROM HISTORIAL_EXAMENES_CREADOS;
+DELETE FROM HISTORIAL_PRESENTACIONES;
+DELETE FROM ESTUDIANTES_EXAMEN_FINALIZADO;
+DELETE FROM MODIFICACION_PREGUNTAS;
+DELETE FROM PREGUNTAS_CON_BAJO_RENDIMIENTO;
+DELETE FROM TEMP_USUARIOS_A_BLOQUEAR;
+
+COMMIT;
 
 -- Tablas básicas de configuración
 CREATE TABLE TIPO_USUARIO (
@@ -285,6 +292,8 @@ CREATE TABLE NOTIFICACION (
     ID_ESTADO NUMBER NOT NULL
 );
 
+COMMIT; 
+
 
 -- Llaves foráneas para FACULTAD
 ALTER TABLE FACULTAD ADD CONSTRAINT FK_FACULTAD_ESTADO 
@@ -419,115 +428,3 @@ ALTER TABLE NOTIFICACION ADD CONSTRAINT FK_NOTIFICACION_USUARIO
 FOREIGN KEY (ID_USUARIO) REFERENCES USUARIO(ID_USUARIO);
 ALTER TABLE NOTIFICACION ADD CONSTRAINT FK_NOTIFICACION_ESTADO 
 FOREIGN KEY (ID_ESTADO) REFERENCES ESTADO_GENERAL(ID_ESTADO);
-
-
--- 1. Catálogos y configuración
-INSERT INTO ESTADO_GENERAL VALUES (1, 'Activo', 'Registro activo', 'GENERAL', 1);
-INSERT INTO ESTADO_GENERAL VALUES (2, 'Inactivo', 'Registro inactivo', 'GENERAL', 1);
-INSERT INTO ESTADO_GENERAL VALUES (3, 'Bloqueado', 'Registro bloqueado', 'GENERAL', 1);
-
-INSERT INTO TIPO_USUARIO VALUES (1, 'Estudiante', 'Usuario estudiante', 1);
-INSERT INTO TIPO_USUARIO VALUES (2, 'Docente', 'Usuario docente', 1);
-
-INSERT INTO TIPO_PREGUNTA VALUES (1, 'Selección única', 'Una sola respuesta correcta', 1);
-INSERT INTO TIPO_PREGUNTA VALUES (2, 'Selección múltiple', 'Varias respuestas correctas', 1);
-INSERT INTO TIPO_PREGUNTA VALUES (3, 'Falso/Verdadero', 'Respuesta de verdadero o falso', 1);
-
-INSERT INTO NIVEL_DIFICULTAD VALUES (1, 'Fácil', 'Pregunta sencilla', 1);
-INSERT INTO NIVEL_DIFICULTAD VALUES (2, 'Media', 'Pregunta de dificultad media', 1);
-INSERT INTO NIVEL_DIFICULTAD VALUES (3, 'Difícil', 'Pregunta compleja', 1);
-
-INSERT INTO CATEGORIA_EXAMEN VALUES (1, 'Parcial', 'Examen parcial', 1);
-INSERT INTO CATEGORIA_EXAMEN VALUES (2, 'Final', 'Examen final', 1);
-
--- 2. Estructura académica
-INSERT INTO FACULTAD VALUES (1, 'Ingeniería', 'Facultad de Ingeniería', 1);
-INSERT INTO PROGRAMA VALUES (1, 1, 'Sistemas', 'Ingeniería de Sistemas', 1);
-INSERT INTO CURSO VALUES (1, 'Bases de Datos II', 'Curso avanzado de bases de datos', 4, 1, 1);
-
-INSERT INTO PERIODO_ACADEMICO VALUES (1, '2025-1', TO_DATE('2025-01-15','YYYY-MM-DD'), TO_DATE('2025-06-15','YYYY-MM-DD'), 1);
-INSERT INTO AULA VALUES (1, 'Aula 101', 'Bloque A', 40, 1);
-
--- 3. Usuarios (3 docentes y 7 estudiantes)
-INSERT INTO USUARIO VALUES (1, 2, 'Juan', 'Pérez', 'juan.perez@uni.edu', 'JuanP3rez#2024', 1, SYSDATE, NULL, 0, NULL, '3001112233', 'Calle 1');
-INSERT INTO USUARIO VALUES (2, 2, 'María', 'López', 'maria.lopez@uni.edu', 'MariaL0pez*2024', 1, SYSDATE, NULL, 0, NULL, '3002223344', 'Calle 2');
-INSERT INTO USUARIO VALUES (3, 2, 'Carlos', 'Ramírez', 'carlos.ramirez@uni.edu', 'CarlosR@2024', 1, SYSDATE, NULL, 0, NULL, '3003334455', 'Calle 3');
-INSERT INTO USUARIO VALUES (4, 1, 'Ana', 'Gómez', 'ana.gomez@uni.edu', 'AnaGomez_2024', 1, SYSDATE, NULL, 0, NULL, '3011112233', 'Calle 4');
-INSERT INTO USUARIO VALUES (5, 1, 'Luis', 'Martínez', 'luis.martinez@uni.edu', 'LuisM2024!', 1, SYSDATE, NULL, 0, NULL, '3012223344', 'Calle 5');
-INSERT INTO USUARIO VALUES (6, 1, 'Sofía', 'Torres', 'sofia.torres@uni.edu', 'SofiaT#2024', 1, SYSDATE, NULL, 0, NULL, '3013334455', 'Calle 6');
-INSERT INTO USUARIO VALUES (7, 1, 'Pedro', 'Suárez', 'pedro.suarez@uni.edu', 'PedroS_2024', 1, SYSDATE, NULL, 0, NULL, '3014445566', 'Calle 7');
-INSERT INTO USUARIO VALUES (8, 1, 'Lucía', 'Vargas', 'lucia.vargas@uni.edu', 'LuciaV2024*', 1, SYSDATE, NULL, 0, NULL, '3015556677', 'Calle 8');
-INSERT INTO USUARIO VALUES (9, 1, 'Miguel', 'Castro', 'miguel.castro@uni.edu', 'MiguelC@2024', 1, SYSDATE, NULL, 0, NULL, '3016667788', 'Calle 9');
-INSERT INTO USUARIO VALUES (10, 1, 'Elena', 'Morales', 'elena.morales@uni.edu', 'ElenaM2024!', 1, SYSDATE, NULL, 0, NULL, '3017778899', 'Calle 10');
-
--- 4. Planificación académica
-INSERT INTO PLAN_ESTUDIO VALUES (1, 1, 'Plan 2025', 'Plan de estudios 2025', SYSDATE, 1);
-INSERT INTO UNIDAD VALUES (1, 1, 'Unidad 1', 'Introducción a bases de datos', 1);
-INSERT INTO CONTENIDO VALUES (1, 1, 'Modelo Relacional', 'Conceptos básicos', 1);
-INSERT INTO TEMA VALUES (1, 1, 'Modelo Relacional', 'Definición y características', 1, 1);
-
--- 5. Grupos y matrículas
-INSERT INTO GRUPO VALUES (1, 1, 1, '2025-1', 2025, 40, 1, 1);
-INSERT INTO JORNADA VALUES (1, 1, 1, 'Lunes', TO_TIMESTAMP('08:00:00', 'HH24:MI:SS'), TO_TIMESTAMP('10:00:00', 'HH24:MI:SS'));
-
--- Matrícula de 7 estudiantes al grupo
-INSERT INTO MATRICULA VALUES (1, 4, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (2, 5, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (3, 6, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (4, 7, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (5, 8, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (6, 9, 1, SYSDATE, 1);
-INSERT INTO MATRICULA VALUES (7, 10, 1, SYSDATE, 1);
-
--- 6. Preguntas y opciones
-INSERT INTO PREGUNTA VALUES (1, 1, 1, 1, 1, '¿Qué es una clave primaria?', 1, NULL, 100, NULL, 1);
-INSERT INTO PREGUNTA VALUES (2, 2, 1, 2, 2, '¿Cuáles son características del modelo relacional?', 1, NULL, 100, NULL, 1);
-INSERT INTO PREGUNTA VALUES (3, 3, 1, 1, 3, 'El modelo relacional fue propuesto por E.F. Codd. (V/F)', 1, NULL, 100, NULL, 1);
-
--- Opciones para pregunta 1 (Selección única)
-INSERT INTO OPCION_RESPUESTA VALUES (1, 1, 'Identificador único', 1, 1);
-INSERT INTO OPCION_RESPUESTA VALUES (2, 1, 'Dato repetido', 0, 2);
-INSERT INTO OPCION_RESPUESTA VALUES (3, 1, 'Campo opcional', 0, 3);
-
--- Opciones para pregunta 2 (Selección múltiple)
-INSERT INTO OPCION_RESPUESTA VALUES (4, 2, 'Integridad de datos', 1, 1);
-INSERT INTO OPCION_RESPUESTA VALUES (5, 2, 'Redundancia máxima', 0, 2);
-INSERT INTO OPCION_RESPUESTA VALUES (6, 2, 'Uso de tablas', 1, 3);
-INSERT INTO OPCION_RESPUESTA VALUES (7, 2, 'Relaciones entre tablas', 1, 4);
-
--- Opciones para pregunta 3 (Verdadero/Falso)
-INSERT INTO OPCION_RESPUESTA VALUES (8, 3, 'Verdadero', 1, 1);
-INSERT INTO OPCION_RESPUESTA VALUES (9, 3, 'Falso', 0, 2);
-
--- 7. Exámenes y asignación de preguntas
-INSERT INTO EXAMEN VALUES (1, 1, 1, 'Quiz 1', 'Primer quiz del curso', SYSDATE, TO_TIMESTAMP('2025-02-01 08:00:00', 'YYYY-MM-DD HH24:MI:SS'), TO_TIMESTAMP('2025-02-01 09:00:00', 'YYYY-MM-DD HH24:MI:SS'), 60, 20, 60, 3, 3, 1, 1, 1, 1, 1, SYSDATE, 1);
-
-INSERT INTO EXAMEN_PREGUNTA VALUES (1, 1, 1, 33.33, 1);
-INSERT INTO EXAMEN_PREGUNTA VALUES (2, 1, 2, 33.33, 2);
-INSERT INTO EXAMEN_PREGUNTA VALUES (3, 1, 3, 33.34, 3);
-
--- 8. Presentaciones y respuestas de estudiantes (solo para 3 estudiantes como ejemplo)
-INSERT INTO PRESENTACION_EXAMEN VALUES (1, 1, 4, SYSTIMESTAMP, SYSTIMESTAMP, 90, 45, '192.168.1.10', 1);
-INSERT INTO PRESENTACION_EXAMEN VALUES (2, 1, 5, SYSTIMESTAMP, SYSTIMESTAMP, 80, 50, '192.168.1.11', 1);
-INSERT INTO PRESENTACION_EXAMEN VALUES (3, 1, 6, SYSTIMESTAMP, SYSTIMESTAMP, 70, 55, '192.168.1.12', 1);
-
--- Respuestas de estudiantes
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (1, 1, 1, 'Identificador único', 1, 33.33, 10);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (2, 1, 2, 'Integridad de datos;Uso de tablas;Relaciones entre tablas', 1, 33.33, 15);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (3, 1, 3, 'Verdadero', 1, 33.34, 20);
-
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (4, 2, 1, 'Dato repetido', 0, 0, 12);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (5, 2, 2, 'Integridad de datos;Uso de tablas', 1, 33.33, 18);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (6, 2, 3, 'Verdadero', 1, 33.34, 20);
-
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (7, 3, 1, 'Identificador único', 1, 33.33, 11);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (8, 3, 2, 'Redundancia máxima', 0, 0, 19);
-INSERT INTO RESPUESTA_ESTUDIANTE VALUES (9, 3, 3, 'Falso', 0, 0, 25);
-
--- 9. Notificaciones y auditoría
-INSERT INTO NOTIFICACION VALUES (1, 4, 'Examen disponible', 'Ya puedes presentar el Quiz 1', 'Examen', SYSTIMESTAMP, NULL, 1);
-INSERT INTO NOTIFICACION VALUES (2, 5, 'Examen disponible', 'Ya puedes presentar el Quiz 1', 'Examen', SYSTIMESTAMP, NULL, 1);
-
-INSERT INTO AUDITORIA VALUES (1, 1, 'EXAMEN', 1, 'INSERT', SYSTIMESTAMP, NULL, NULL, '192.168.1.1');
-
-COMMIT;

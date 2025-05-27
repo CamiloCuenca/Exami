@@ -1,3 +1,7 @@
+-- Crear secuencias necesarias
+CREATE SEQUENCE SEQ_ID_USUARIO START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE SEQ_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
 --PROCEDURE PARA REGISTRAR USUARIO
 create or replace PROCEDURE SP_REGISTRAR_USUARIO_COMPLETO (
     p_nombre             IN  VARCHAR2,
@@ -38,7 +42,7 @@ BEGIN
         p_codigo_resultado  := COD_ERROR_PARAMETROS;
         p_mensaje_resultado := 'Error: Todos los campos obligatorios son requeridos';
         RETURN;
-END IF;
+    END IF;
 
     -- 2. Validación de longitudes máximas
     IF LENGTH(p_nombre) > 100 OR LENGTH(p_apellido) > 100
@@ -46,88 +50,87 @@ END IF;
         p_codigo_resultado  := COD_ERROR_PARAMETROS;
         p_mensaje_resultado := 'Error: Uno o más campos exceden la longitud máxima permitida (100 caracteres)';
         RETURN;
-END IF;
+    END IF;
 
     -- 3. Validar tipo de usuario (más eficiente)
-BEGIN
-SELECT 1 INTO v_tipo_usuario_valido
-FROM TIPO_USUARIO
-WHERE ID_TIPO_USUARIO = p_id_tipo_usuario
-  AND ROWNUM = 1;
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_tipo_usuario_valido
+        FROM TIPO_USUARIO
+        WHERE ID_TIPO_USUARIO = p_id_tipo_usuario
+          AND ROWNUM = 1;
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_TIPO_USUARIO_INVALIDO;
             p_mensaje_resultado := 'Error: Tipo de usuario no válido (ID: '||p_id_tipo_usuario||')';
             RETURN;
-END;
+    END;
 
     -- 4. Validar estado (más eficiente)
-BEGIN
-SELECT 1 INTO v_estado_valido
-FROM ESTADO_GENERAL
-WHERE ID_ESTADO = p_id_estado
-  AND ROWNUM = 1;
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_estado_valido
+        FROM ESTADO_GENERAL
+        WHERE ID_ESTADO = p_id_estado
+          AND ROWNUM = 1;
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_ESTADO_INVALIDO;
             p_mensaje_resultado := 'Error: Estado no válido (ID: '||p_id_estado||')';
             RETURN;
-END;
+    END;
 
--- 5. Verificar email único (corrección)
-BEGIN
-    SELECT COUNT(*) INTO v_email_existe
-    FROM USUARIO
-    WHERE EMAIL = p_email;
-    
-    IF v_email_existe > 0 THEN
-        p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
-        p_mensaje_resultado := 'Error: El email '||p_email||' ya está registrado';
-        RETURN;
-    END IF;
-END;
+    -- 5. Verificar email único (corrección)
+    BEGIN
+        SELECT COUNT(*) INTO v_email_existe
+        FROM USUARIO
+        WHERE UPPER(EMAIL) = UPPER(p_email);
+
+        IF v_email_existe > 0 THEN
+            p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
+            p_mensaje_resultado := 'Error: El email '||p_email||' ya está registrado';
+            RETURN;
+        END IF;
+    END;
 
     -- 6. Validar secuencia
-BEGIN
-SELECT 1 INTO v_secuencia_valida
-FROM USER_SEQUENCES
-WHERE SEQUENCE_NAME = 'SEQ_ID_USUARIO';
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_secuencia_valida
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_USUARIO';
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_ERROR_SECUENCIA;
             p_mensaje_resultado := 'Error: Secuencia SEQ_ID_USUARIO no existe';
             RETURN;
-END;
+    END;
 
     -- 7. Obtener ID y registrar usuario
-BEGIN
-SELECT SEQ_ID_USUARIO.NEXTVAL INTO p_id_usuario_creado FROM DUAL;
+    BEGIN
+        SELECT SEQ_ID_USUARIO.NEXTVAL INTO p_id_usuario_creado FROM DUAL;
 
-INSERT INTO USUARIO (
-    ID_USUARIO, ID_TIPO_USUARIO, NOMBRE, APELLIDO,
-    EMAIL, CONTRASENA, ID_ESTADO, FECHA_REGISTRO,
-    INTENTOS_FALLIDOS, TELEFONO, DIRECCION
-) VALUES (
-             p_id_usuario_creado, p_id_tipo_usuario, p_nombre, p_apellido,
-             p_email, p_contrasena, p_id_estado, SYSDATE,
-             0, p_telefono, p_direccion
-         );
+        INSERT INTO USUARIO (
+            ID_USUARIO, ID_TIPO_USUARIO, NOMBRE, APELLIDO,
+            EMAIL, CONTRASENA, ID_ESTADO, FECHA_REGISTRO,
+            INTENTOS_FALLIDOS, TELEFONO, DIRECCION
+        ) VALUES (
+            p_id_usuario_creado, p_id_tipo_usuario, p_nombre, p_apellido,
+            p_email, p_contrasena, p_id_estado, SYSDATE,
+            0, p_telefono, p_direccion
+        );
 
-COMMIT;
-p_codigo_resultado := COD_EXITO;
+        COMMIT;
+        p_codigo_resultado := COD_EXITO;
         p_mensaje_resultado := 'Usuario registrado exitosamente. ID: '||p_id_usuario_creado;
 
-EXCEPTION
+    EXCEPTION
         WHEN DUP_VAL_ON_INDEX THEN
             ROLLBACK;
             p_codigo_resultado := COD_EMAIL_YA_EXISTE;
             p_mensaje_resultado := 'Error: El email ya existe (violación de índice único)';
-
-WHEN OTHERS THEN
+        WHEN OTHERS THEN
             ROLLBACK;
             p_codigo_resultado := COD_ERROR_REGISTRO;
             p_mensaje_resultado := 'Error técnico al registrar usuario: '||SUBSTR(SQLERRM,1,200);
-END;
+    END;
 END SP_REGISTRAR_USUARIO_COMPLETO;
 
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -496,9 +499,6 @@ END SP_CREAR_EXAMEN;
 CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-
-
--- PROCEDURE para agregar una nueva pregunta
 CREATE OR REPLACE PROCEDURE SP_AGREGAR_PREGUNTA (
     -- Parámetros básicos de la pregunta
     p_id_docente            IN NUMBER,
@@ -757,7 +757,6 @@ EXCEPTION
         p_codigo_resultado := COD_ERROR_REGISTRO;
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_AGREGAR_PREGUNTA;
-
 
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1086,38 +1085,9 @@ EXCEPTION
         p_mensaje := 'Error durante la recuperación de cuenta: ' || SUBSTR(SQLERRM, 1, 200);
 END RECUPERAR_CUENTA;
 
-CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_ESTUDIANTE(
-    p_id_estudiante IN NUMBER
-) RETURN SYS_REFCURSOR
-IS
-    v_cursor SYS_REFCURSOR;
-BEGIN
-    OPEN v_cursor FOR
-        SELECT 
-            e.ID_EXAMEN,
-            e.NOMBRE,
-            e.DESCRIPCION,
-            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO_FORMATEADA,
-            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN_FORMATEADA,
-            eg.NOMBRE as ESTADO,
-            t.NOMBRE as NOMBRE_TEMA,
-            c.NOMBRE as NOMBRE_CURSO
-        FROM EXAMEN e
-        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
-        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
-        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
-        INNER JOIN MATRICULA m ON c.ID_CURSO = m.ID_CURSO
-        WHERE m.ID_ESTUDIANTE = p_id_estudiante
-        AND m.ID_ESTADO = 1  -- Matrícula activa
-        AND e.ID_ESTADO IN (1, 2)  -- Examen activo o programado
-        ORDER BY e.FECHA_INICIO DESC;
-    
-    RETURN v_cursor;
-END;
-/
 
 
---////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+--/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 --Procedimiento para asignar preguntas aleatorias a un examen
 CREATE OR REPLACE PROCEDURE ASIGNAR_PREGUNTAS_ALEATORIAS (
@@ -1129,32 +1099,102 @@ IS
     V_PORCENTAJE NUMBER := ROUND(100 / P_CANTIDAD, 2);
 BEGIN
     -- Eliminar preguntas previas del examen si existen
-DELETE FROM EXAMEN_PREGUNTA
-WHERE ID_EXAMEN = P_ID_EXAMEN;
+    DELETE FROM EXAMEN_PREGUNTA
+    WHERE ID_EXAMEN = P_ID_EXAMEN;
 
--- Insertar nuevas preguntas aleatorias desde el tema indicado
-INSERT INTO EXAMEN_PREGUNTA (
-    ID_EXAMEN_PREGUNTA,
-    ID_EXAMEN,
-    ID_PREGUNTA,
-    PORCENTAJE,
-    ORDEN
-)
-SELECT
-    SEQ_EXAMEN_PREGUNTA.NEXTVAL,
-    P_ID_EXAMEN,
-    ID_PREGUNTA,
-    V_PORCENTAJE,
-    ROWNUM
-FROM (
-         SELECT ID_PREGUNTA
-         FROM PREGUNTA
-         WHERE ID_TEMA = (
-             SELECT ID_TEMA FROM TEMA WHERE NOMBRE = P_TEMA
-         )
-           AND ES_PUBLICA = 1
-         ORDER BY DBMS_RANDOM.VALUE
-     )
-WHERE ROWNUM <= P_CANTIDAD;
+    -- Insertar nuevas preguntas aleatorias desde el tema indicado
+    INSERT INTO EXAMEN_PREGUNTA (
+        ID_EXAMEN_PREGUNTA,
+        ID_EXAMEN,
+        ID_PREGUNTA,
+        PORCENTAJE,
+        ORDEN
+    )
+    SELECT
+        SEQ_EXAMEN_PREGUNTA.NEXTVAL,
+        P_ID_EXAMEN,
+        ID_PREGUNTA,
+        V_PORCENTAJE,
+        ROWNUM
+    FROM (
+        SELECT ID_PREGUNTA
+        FROM PREGUNTA
+        WHERE ID_TEMA = (
+            SELECT ID_TEMA FROM TEMA WHERE NOMBRE = P_TEMA
+        )
+        AND ES_PUBLICA = 1
+        ORDER BY DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM <= P_CANTIDAD;
+    
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(-20001, 'Error al asignar preguntas aleatorias: ' || SQLERRM);
+END ASIGNAR_PREGUNTAS_ALEATORIAS;
+
+CREATE OR REPLACE PROCEDURE OBTENER_EXAMENES_POR_ESTADO(
+    p_id_estado IN NUMBER,
+    p_id_estudiante IN NUMBER,  -- Añadimos este parámetro
+    p_cursor OUT SYS_REFCURSOR
+) AS
+BEGIN
+    OPEN p_cursor FOR
+        SELECT 
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO,
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN,
+            e.TIEMPO_LIMITE,
+            e.PESO_CURSO,
+            e.UMBRAL_APROBACION,
+            t.NOMBRE as NOMBRE_TEMA,
+            c.NOMBRE as NOMBRE_CURSO,
+            eg.NOMBRE as NOMBRE_ESTADO
+        FROM EXAMEN e
+        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
+        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
+        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
+        INNER JOIN MATRICULA m ON m.ID_ESTUDIANTE = p_id_estudiante
+        INNER JOIN GRUPO g ON m.ID_GRUPO = g.ID_GRUPO AND g.ID_CURSO = c.ID_CURSO
+        WHERE e.ID_ESTADO = p_id_estado
+        ORDER BY e.FECHA_INICIO DESC;
+END;
+/
+
+CREATE OR REPLACE PROCEDURE OBTENER_EXAMENES_POR_ESTADO_Y_ESTUDIANTE(
+    p_id_estado IN NUMBER,
+    p_id_estudiante IN NUMBER,
+    p_cursor OUT SYS_REFCURSOR
+) AS
+BEGIN
+    OPEN p_cursor FOR
+        SELECT 
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO,
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN,
+            e.TIEMPO_LIMITE,
+            e.PESO_CURSO,
+            e.UMBRAL_APROBACION,
+            t.NOMBRE as NOMBRE_TEMA,
+            c.NOMBRE as NOMBRE_CURSO,
+            eg.NOMBRE as NOMBRE_ESTADO,
+            pe.ID_PRESENTACION,  -- Añadimos información de presentación
+            pe.PUNTAJE_OBTENIDO, -- Añadimos puntaje
+            pe.TIEMPO_UTILIZADO  -- Añadimos tiempo utilizado
+        FROM EXAMEN e
+        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
+        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
+        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
+        INNER JOIN MATRICULA m ON m.ID_ESTUDIANTE = p_id_estudiante
+        INNER JOIN GRUPO g ON m.ID_GRUPO = g.ID_GRUPO AND g.ID_CURSO = c.ID_CURSO
+        LEFT JOIN PRESENTACION_EXAMEN pe ON pe.ID_EXAMEN = e.ID_EXAMEN 
+            AND pe.ID_ESTUDIANTE = p_id_estudiante
+        WHERE e.ID_ESTADO = p_id_estado
+        ORDER BY e.FECHA_INICIO DESC;
 END;
 /

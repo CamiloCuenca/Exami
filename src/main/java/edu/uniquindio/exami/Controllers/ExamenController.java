@@ -2,7 +2,7 @@ package edu.uniquindio.exami.Controllers;
 
 import edu.uniquindio.exami.dto.*;
 import edu.uniquindio.exami.services.ExamenService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,16 +10,15 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-
-
 @RestController
 @RequestMapping("/api/examen")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
 public class ExamenController {
 
     private static final Integer COD_EXITO = 0;
 
-    @Autowired
-    private ExamenService examenService;
+    private final ExamenService examenService;
 
     @GetMapping("/mis-examenes/{idEstudiante}")
     public ResponseEntity<?> listarExamenesPorEstudiante(@PathVariable Long idEstudiante) {
@@ -110,7 +109,6 @@ public class ExamenController {
         }
     }
 
-
     @PostMapping("/Crear")
     public ResponseEntity<PreguntaResponseDTO> agregarPregunta(@RequestBody PreguntaRequestDTO request) {
         PreguntaResponseDTO response = examenService.agregarPregunta(request);
@@ -158,7 +156,6 @@ public class ExamenController {
             }
         }
 
-
     @GetMapping("/expirados/{idEstudiante}")
         public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
             try {
@@ -177,5 +174,26 @@ public class ExamenController {
             }
         }
 
+
+
+    @GetMapping("/estado/{idEstado}/{idEstudiante}")
+    public ResponseEntity<?> obtenerExamenesPorEstadoYEstudiante(
+            @PathVariable Integer idEstado,
+            @PathVariable Integer idEstudiante) {
+        try {
+            List<ExamenEstadoDTO> examenes = examenService.obtenerExamenesPorEstadoYEstudiante(idEstado, idEstudiante);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", examenes,
+                "message", "Exámenes obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los exámenes: " + e.getMessage()
+                ));
+        }
+    }
 }
 

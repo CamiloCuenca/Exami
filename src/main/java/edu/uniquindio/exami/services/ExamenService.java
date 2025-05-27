@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
+import org.springframework.jdbc.core.RowMapper;
 
 @Service
 @Transactional
@@ -681,4 +682,45 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
         }
     }
 
+    
+    public List<ExamenEstadoDTO> obtenerExamenesPorEstadoYEstudiante(Integer idEstado, Integer idEstudiante) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{call OBTENER_EXAMENES_POR_ESTADO_Y_ESTUDIANTE(?, ?, ?)}")) {
+    
+            // Registrar parámetros
+            stmt.setInt(1, idEstado);
+            stmt.setInt(2, idEstudiante);
+            stmt.registerOutParameter(3, Types.REF_CURSOR);
+    
+            // Ejecutar función
+            stmt.execute();
+    
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(3)) {
+                List<ExamenEstadoDTO> examenes = new ArrayList<>();
+                while (rs.next()) {
+                    examenes.add(new ExamenEstadoDTO(
+                        rs.getLong("ID_EXAMEN"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION"),
+                        rs.getString("FECHA_INICIO"),
+                        rs.getString("FECHA_FIN"),
+                        rs.getInt("TIEMPO_LIMITE"),
+                        rs.getInt("PESO_CURSO"),
+                        rs.getInt("UMBRAL_APROBACION"),
+                        rs.getString("NOMBRE_TEMA"),
+                        rs.getString("NOMBRE_CURSO"),
+                        rs.getString("NOMBRE_ESTADO"),
+                        rs.getLong("ID_PRESENTACION"),
+                        rs.getDouble("PUNTAJE_OBTENIDO"),
+                        rs.getInt("TIEMPO_UTILIZADO")
+                    ));
+                }
+                return examenes;
+            }
+        } catch (SQLException e) {
+            logger.severe("Error al obtener exámenes por estado y estudiante: " + e.getMessage());
+            throw new RuntimeException("Error al obtener los exámenes: " + e.getMessage());
+        }
+    }
 }
