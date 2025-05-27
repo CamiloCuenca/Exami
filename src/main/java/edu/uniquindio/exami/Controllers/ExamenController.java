@@ -122,5 +122,60 @@ public class ExamenController {
         }
     }
 
+    @GetMapping("/pendientes/{idEstudiante}")
+    public ResponseEntity<?> listarExamenesPendientesEstudiante(@PathVariable Long idEstudiante) {
+        try {
+            List<ExamenCardDTO> examenesPendientes = examenService.listarExamenesPendientesEstudiante(idEstudiante);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", examenesPendientes,
+                "message", "Exámenes pendientes obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los exámenes pendientes: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/en-progreso/{idEstudiante}")
+        public ResponseEntity<?> listarExamenesEnProgresoEstudiante(@PathVariable Long idEstudiante) {
+            try {
+                List<ExamenCardDTO> examenesEnProgreso = examenService.listarExamenesEnProgresoEstudiante(idEstudiante);
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", examenesEnProgreso,
+                    "message", "Exámenes en progreso obtenidos exitosamente"
+                ));
+            } catch (Exception e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Error al obtener los exámenes en progreso: " + e.getMessage()
+                    ));
+            }
+        }
+
+
+    @GetMapping("/expirados/{idEstudiante}")
+        public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
+            try {
+                List<ExamenCardDTO> examenesExpirados = examenService.listarExamenesExpiradosEstudiante(idEstudiante);
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", examenesExpirados,
+                    "message", "Exámenes expirados obtenidos exitosamente"
+                ));
+            } catch (Exception e) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Error al obtener los exámenes expirados: " + e.getMessage()
+                    ));
+            }
+        }
+
 }
 
