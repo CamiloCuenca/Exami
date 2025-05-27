@@ -806,6 +806,148 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
         }
     }
 
+    /**
+     * Obtiene todas las categorías de exámenes
+     * @return Lista de categorías
+     */
+    public List<CategoriaDTO> obtenerCategoriasExamenes() {
+        List<CategoriaDTO> categorias = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_categorias_examenes()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    CategoriaDTO categoria = new CategoriaDTO(
+                        rs.getLong("ID_CATEGORIA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    categorias.add(categoria);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener categorías de exámenes: " + e.getMessage());
+            throw new RuntimeException("Error al obtener categorías", e);
+        }
+
+        return categorias;
+    }
+
+    /**
+     * Obtiene todas las categorías de exámenes
+     * @return Lista de categorías
+     */
+    public List<TemaDTO> obtenerTemas() {
+        List<TemaDTO> temas = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_temas()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    TemaDTO tema = new TemaDTO(
+                        rs.getLong("ID_TEMA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    temas.add(tema);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener temas: " + e.getMessage());
+            throw new RuntimeException("Error al obtener temas", e);
+        }
+
+        return temas;
+    }
+
+    /**
+     * Obtiene un tema específico por su ID
+     * @param idTema ID del tema a obtener
+     * @return Tema encontrado o null si no existe
+     */
+    public TemaDTO obtenerTemaPorId(Long idTema) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tema_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idTema);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new TemaDTO(
+                        rs.getLong("ID_TEMA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tema por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tema", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene una categoría de examen específica por su ID
+     * @param idCategoria ID de la categoría a obtener
+     * @return Categoría encontrada o null si no existe
+     */
+    public CategoriaDTO obtenerCategoriaExamenPorId(Long idCategoria) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_categoria_examen_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idCategoria);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new CategoriaDTO(
+                        rs.getLong("ID_CATEGORIA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener categoría por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener categoría", e);
+        }
+
+        return null;
+    }
+
 
 
 

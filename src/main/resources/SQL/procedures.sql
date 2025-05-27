@@ -495,9 +495,6 @@ END SP_CREAR_EXAMEN;
 
 --//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
--- PROCEDURE para agregar una nueva pregunta
-CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
-CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
 CREATE OR REPLACE PROCEDURE SP_AGREGAR_PREGUNTA (
     -- Parámetros básicos de la pregunta
