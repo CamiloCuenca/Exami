@@ -147,58 +147,5 @@ public class ExamenServiceTest {
             "El mensaje de resultado no debe ser nulo");
     }
 
-    @Test
-    @Rollback(false)
-    void obtenerExamenesPorEstadoYEstudiante() {
-        // ID del estudiante de prueba (Ana Gómez)
-        Integer idEstudiante = 4;
-        Integer idEstado = 4; // Estado activo/disponible
-        
-        // Obtener exámenes disponibles para el estudiante
-        List<ExamenEstadoDTO> examenesEstudiante = service.obtenerExamenesPorEstadoYEstudiante(idEstado, idEstudiante);
-        
-        // Verificar que la lista no sea nula
-        assertNotNull(examenesEstudiante, "La lista de exámenes no debe ser nula");
-        
-        // Imprimir resultados para depuración
-        System.out.println("===================================");
-        System.out.println("Exámenes Disponibles para Estudiante " + idEstudiante);
-        System.out.println("===================================");
-        System.out.println("Cantidad de exámenes: " + examenesEstudiante.size());
-        
-        // Verificar cada examen
-        for (ExamenEstadoDTO examen : examenesEstudiante) {
-            // Verificar campos obligatorios
-            assertNotNull(examen.getIdExamen(), "El ID del examen no debe ser nulo");
-            assertNotNull(examen.getNombre(), "El nombre del examen no debe ser nulo");
-            assertNotNull(examen.getDescripcion(), "La descripción no debe ser nula");
-            assertNotNull(examen.getFechaInicio(), "La fecha de inicio no debe ser nula");
-            assertNotNull(examen.getFechaFin(), "La fecha de fin no debe ser nula");
-            assertNotNull(examen.getTiempoLimite(), "El tiempo límite no debe ser nulo");
-            assertNotNull(examen.getPesoCurso(), "El peso del curso no debe ser nulo");
-            assertNotNull(examen.getUmbralAprobacion(), "El umbral de aprobación no debe ser nulo");
-            assertNotNull(examen.getNombreTema(), "El nombre del tema no debe ser nulo");
-            assertNotNull(examen.getNombreCurso(), "El nombre del curso no debe ser nulo");
-            assertNotNull(examen.getNombreEstado(), "El nombre del estado no debe ser nulo");
-            
-            // Imprimir información detallada
-            System.out.println("Examen ID: " + examen.getIdExamen());
-            System.out.println("Nombre: " + examen.getNombre());
-            System.out.println("Descripción: " + examen.getDescripcion());
-            System.out.println("Tema: " + examen.getNombreTema());
-            System.out.println("Curso: " + examen.getNombreCurso());
-            System.out.println("Fecha Inicio: " + examen.getFechaInicio());
-            System.out.println("Fecha Fin: " + examen.getFechaFin());
-            System.out.println("Tiempo Límite: " + examen.getTiempoLimite());
-            System.out.println("Peso Curso: " + examen.getPesoCurso());
-            System.out.println("Umbral Aprobación: " + examen.getUmbralAprobacion());
-            System.out.println("Estado: " + examen.getNombreEstado());
-            
-            // Campos de presentación (pueden ser nulos si el estudiante no ha presentado el examen)
-            System.out.println("ID Presentación: " + examen.getIdPresentacion());
-            System.out.println("Puntaje Obtenido: " + examen.getPuntajeObtenido());
-            System.out.println("Tiempo Utilizado: " + examen.getTiempoUtilizado());
-            System.out.println("-----------------------------------");
-        }
-    }
+
 } 

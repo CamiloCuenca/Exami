@@ -26,6 +26,8 @@ import java.util.Map;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
 import org.springframework.jdbc.core.RowMapper;
+import oracle.jdbc.OracleTypes;
+
 
 @Service
 @Transactional
@@ -524,49 +526,6 @@ public class ExamenService {
     }
 
 
-    /**
-     * Obtiene la lista de exámenes pendientes para un estudiante.
-     * @param idEstudiante ID del estudiante
-     * @return Lista de DTOs con información de los exámenes pendientes
-     */
-    public List<ExamenCardDTO> listarExamenesPendientesEstudiante(Long idEstudiante) {
-        List<ExamenCardDTO> examenesPendientes = new ArrayList<>();
-
-        try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{? = call EXAMENES_PENDIENTES_EST(?)}")) {
-
-            // Registrar parámetros
-            stmt.registerOutParameter(1, Types.REF_CURSOR);
-            stmt.setLong(2, idEstudiante);
-
-            // Ejecutar función
-            stmt.execute();
-
-            // Obtener el cursor de resultados
-            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
-                while (rs.next()) {
-                    ExamenCardDTO examen = new ExamenCardDTO(
-                            rs.getLong("ID_EXAMEN"),
-                            rs.getString("NOMBRE"),
-                            rs.getString("DESCRIPCION"),
-                            rs.getString("FECHA_INICIO_FORMATEADA"),
-                            rs.getString("FECHA_FIN_FORMATEADA"),
-                            rs.getString("ESTADO"),
-                            rs.getString("NOMBRE_TEMA"),
-                            rs.getString("NOMBRE_CURSO")
-                    );
-                    examenesPendientes.add(examen);
-                }
-            }
-
-        } catch (SQLException e) {
-            logger.severe("Error al listar exámenes pendientes del estudiante: " + e.getMessage());
-            throw new RuntimeException("Error al obtener exámenes pendientes", e);
-        }
-
-        return examenesPendientes;
-    }
-
 /**
  * Obtiene la lista de exámenes en progreso para un estudiante.
  * @param idEstudiante ID del estudiante
@@ -692,46 +651,6 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
     }
 
     
-    public List<ExamenEstadoDTO> obtenerExamenesPorEstadoYEstudiante(Integer idEstado, Integer idEstudiante) {
-        try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{call OBTENER_EXAMENES_POR_ESTADO_Y_ESTUDIANTE(?, ?, ?)}")) {
-    
-            // Registrar parámetros
-            stmt.setInt(1, idEstado);
-            stmt.setInt(2, idEstudiante);
-            stmt.registerOutParameter(3, Types.REF_CURSOR);
-    
-            // Ejecutar función
-            stmt.execute();
-    
-            // Obtener el cursor de resultados
-            try (ResultSet rs = (ResultSet) stmt.getObject(3)) {
-                List<ExamenEstadoDTO> examenes = new ArrayList<>();
-                while (rs.next()) {
-                    examenes.add(new ExamenEstadoDTO(
-                        rs.getLong("ID_EXAMEN"),
-                        rs.getString("NOMBRE"),
-                        rs.getString("DESCRIPCION"),
-                        rs.getString("FECHA_INICIO"),
-                        rs.getString("FECHA_FIN"),
-                        rs.getInt("TIEMPO_LIMITE"),
-                        rs.getInt("PESO_CURSO"),
-                        rs.getInt("UMBRAL_APROBACION"),
-                        rs.getString("NOMBRE_TEMA"),
-                        rs.getString("NOMBRE_CURSO"),
-                        rs.getString("NOMBRE_ESTADO"),
-                        rs.getLong("ID_PRESENTACION"),
-                        rs.getDouble("PUNTAJE_OBTENIDO"),
-                        rs.getInt("TIEMPO_UTILIZADO")
-                    ));
-                }
-                return examenes;
-            }
-        } catch (SQLException e) {
-            logger.severe("Error al obtener exámenes por estado y estudiante: " + e.getMessage());
-            throw new RuntimeException("Error al obtener los exámenes: " + e.getMessage());
-        }
-    }
 
      /**
      * Obtiene la lista de exámenes relevantes para un estudiante con su estado para la UI.
@@ -763,6 +682,93 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
     }
 
 
+    public PresentacionExamenDTO iniciarExamen(Long idExamen, Long idEstudiante) {
+        return jdbcTemplate.execute(
+            "BEGIN INICIAR_EXAMEN(?, ?, ?); END;",
+            (CallableStatement cs) -> {
+                cs.setLong(1, idExamen);
+                cs.setLong(2, idEstudiante);
+                cs.registerOutParameter(3, OracleTypes.CURSOR);
+                cs.execute();
+                
+                try (ResultSet rs = (ResultSet) cs.getObject(3)) {
+                    if (rs.next()) {
+                        return new PresentacionExamenDTO(
+                            rs.getLong("idPresentacion"),
+                            rs.getLong("idExamen"),
+                            rs.getLong("idEstudiante"),
+                            rs.getTimestamp("fechaInicio").toInstant(),
+                            null,
+                            rs.getInt("tiempoLimite"),
+                            0,
+                            "EN_PROGRESO"
+                        );
+                    }
+                    throw new RuntimeException("No se pudo iniciar el examen");
+                }
+            }
+        );
+    }
+
+    public List<PreguntaExamenDTO> obtenerPreguntasExamen(Long idPresentacion) {
+        return jdbcTemplate.query(
+            "SELECT * FROM TABLE(OBTENER_PREGUNTAS_PRESENTACION(?))",
+            (rs, rowNum) -> {
+                PreguntaExamenDTO pregunta = new PreguntaExamenDTO();
+                pregunta.setIdPregunta(rs.getLong("ID_PREGUNTA"));
+                pregunta.setTextoPregunta(rs.getString("TEXTO_PREGUNTA"));
+                pregunta.setPorcentaje(rs.getInt("PORCENTAJE"));
+                pregunta.setOrden(rs.getInt("ORDEN"));
+                
+                // Obtener opciones de respuesta
+                List<OpcionRespuestaDTO> opciones = jdbcTemplate.query(
+                    "SELECT * FROM TABLE(PAQUETE_EXAMEN.OBTENER_OPCIONES_PREGUNTA(?))",
+                    (rs2, rowNum2) -> new OpcionRespuestaDTO(
+                        rs2.getLong("ID_OPCION"),
+                        rs2.getString("TEXTO"),
+                        rs2.getInt("ORDEN")
+                    ),
+                    pregunta.getIdPregunta()
+                );
+                pregunta.setOpciones(opciones);
+                
+                return pregunta;
+            },
+            idPresentacion
+        );
+    }
+
+    public RespuestaResponseDTO responderPregunta(Long idPresentacion, RespuestaEstudianteDTO respuesta) {
+        return jdbcTemplate.queryForObject(
+            "SELECT * FROM TABLE(RESPONDER_PREGUNTA(?, ?, ?, ?))",
+            (rs, rowNum) -> new RespuestaResponseDTO(
+                rs.getBoolean("CORRECTA"),
+                rs.getString("RETROALIMENTACION"),
+                rs.getBigDecimal("PUNTAJE_OBTENIDO")
+            ),
+            idPresentacion,
+            respuesta.getIdPregunta(),
+            respuesta.getIdOpcionSeleccionada(),
+            respuesta.getRespuestaTexto()
+        );
+    }
+
+    public PresentacionExamenDTO finalizarExamen(Long idPresentacion) {
+        return jdbcTemplate.queryForObject(
+            "SELECT * FROM TABLE(FINALIZAR_EXAMEN(?))",
+            (rs, rowNum) -> new PresentacionExamenDTO(
+                rs.getLong("ID_PRESENTACION"),
+                rs.getLong("ID_EXAMEN"),
+                rs.getLong("ID_ESTUDIANTE"),
+                rs.getTimestamp("FECHA_INICIO").toInstant(),
+                rs.getTimestamp("FECHA_FIN").toInstant(),
+                rs.getInt("TIEMPO_LIMITE"),
+                rs.getInt("TIEMPO_UTILIZADO"),
+                rs.getString("ESTADO")
+            ),
+            idPresentacion
+        );
+    }
 
     /**
      * RowMapper para convertir cada fila del cursor a un objeto ExamenEstudianteDetalleDTO.
