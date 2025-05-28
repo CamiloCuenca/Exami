@@ -650,7 +650,7 @@ BEGIN
     END IF;
 
     -- 9. Validaciones específicas según el tipo de pregunta
-    IF p_id_tipo_pregunta = 1 THEN -- Selección múltiple
+    IF p_id_tipo_pregunta = 2 THEN -- Selección múltiple
         v_num_opciones_correctas := 0;
         FOR i IN 1..p_son_correctas.COUNT LOOP
             IF p_son_correctas(i) = 1 THEN
@@ -662,7 +662,7 @@ BEGIN
             p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta en selección múltiple';
             RETURN;
         END IF;
-    ELSIF p_id_tipo_pregunta = 2 THEN -- Selección única
+    ELSIF p_id_tipo_pregunta = 1 THEN -- Selección única
         v_num_opciones_correctas := 0;
         FOR i IN 1..p_son_correctas.COUNT LOOP
             IF p_son_correctas(i) = 1 THEN
@@ -674,7 +674,7 @@ BEGIN
             p_mensaje_resultado := 'Error: Debe haber exactamente una opción correcta en selección única';
             RETURN;
         END IF;
-    ELSIF p_id_tipo_pregunta = 3 THEN -- Falso/Verdadero
+    ELSIF p_id_tipo_pregunta = 3 THEN -- Verdadero/Falso
         IF p_textos_opciones.COUNT != 2 THEN
             p_codigo_resultado := COD_ERROR_OPCIONES;
             p_mensaje_resultado := 'Error: Debe haber exactamente dos opciones en Falso/Verdadero';
