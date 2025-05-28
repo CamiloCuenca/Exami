@@ -219,86 +219,79 @@ public class ExamenService {
      */
     public PreguntaExamenResponseDTO asignarPreguntasExamen(PreguntaExamenRequestDTO request) {
         Connection connection = null;
+        CallableStatement stmt = null;
         try {
-            logger.info("Intentando asignar preguntas al examen: " + request.getIdExamen());
-            
-            // Validación básica de datos requeridos
-            if (request.getIdExamen() == null || request.getIdDocente() == null || 
-                request.getIdsPreguntas() == null || request.getIdsPreguntas().isEmpty() ||
-                request.getPorcentajes() == null || request.getPorcentajes().isEmpty() ||
-                request.getOrdenes() == null || request.getOrdenes().isEmpty()) {
-                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
-                    "Los campos obligatorios (examen, docente, preguntas, porcentajes y órdenes) son requeridos");
-            }
-            
-            // Validar que las listas tengan la misma longitud
-            if (request.getIdsPreguntas().size() != request.getPorcentajes().size() || 
-                request.getIdsPreguntas().size() != request.getOrdenes().size()) {
-                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
-                    "Las listas de preguntas, porcentajes y órdenes deben tener la misma longitud");
-            }
-            
             connection = dataSource.getConnection();
-            
-            // Convertir listas de Java a arrays de Oracle
-            Array idsPreguntas = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            OracleConnection oracleConn = connection.unwrap(OracleConnection.class);
+            stmt = connection.prepareCall("{ call SP_ASIGNAR_PREGUNTAS_EXAMEN(?, ?, ?, ?, ?, ?, ?, ?, ?) }");
+
+            // Convertir las listas a arrays Oracle
+            Array idsPreguntasArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getIdsPreguntas().toArray());
-            
-            Array porcentajes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            Array porcentajesArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getPorcentajes().toArray());
-            
-            Array ordenes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            Array ordenesArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getOrdenes().toArray());
-            
-            // Preparar la llamada al procedimiento almacenado
-            CallableStatement stmt = connection.prepareCall(
-                "{ call SP_ASIGNAR_PREGUNTAS_EXAMEN(?, ?, ?, ?, ?, ?, ?, ?) }");
-            
-            // Parámetros de entrada
+
+            // Establecer parámetros de entrada
             stmt.setLong(1, request.getIdExamen());
             stmt.setLong(2, request.getIdDocente());
-            stmt.setArray(3, idsPreguntas);
-            stmt.setArray(4, porcentajes);
-            stmt.setArray(5, ordenes);
-            
-            // Parámetros de salida
-            stmt.registerOutParameter(6, Types.INTEGER); // cantidad_asignadas
-            stmt.registerOutParameter(7, Types.INTEGER); // codigo_resultado
-            stmt.registerOutParameter(8, Types.VARCHAR); // mensaje_resultado
-            
+            stmt.setArray(3, idsPreguntasArray);
+            stmt.setArray(4, porcentajesArray);
+            stmt.setArray(5, ordenesArray);
+            stmt.setDouble(6, request.getUmbralAprobacion());
+
+            // Registrar parámetros de salida
+            stmt.registerOutParameter(7, Types.NUMERIC); // cantidad_asignadas
+            stmt.registerOutParameter(8, Types.NUMERIC); // codigo_resultado
+            stmt.registerOutParameter(9, Types.VARCHAR); // mensaje_resultado
+
             // Ejecutar el procedimiento
             stmt.execute();
-            
-            // Obtener los resultados
-            Integer cantidadAsignadas = stmt.getInt(6);
-            Integer codigoResultado = stmt.getInt(7);
-            String mensajeResultado = stmt.getString(8);
-            
-            // Cerrar recursos
-            stmt.close();
-            
-            // Crear y devolver la respuesta
+
+            // Obtener resultados
+            int cantidadAsignadas = stmt.getInt(7);
+            int codigoResultado = stmt.getInt(8);
+            String mensajeResultado = stmt.getString(9);
+
+            // Crear y retornar el DTO de respuesta
             return new PreguntaExamenResponseDTO(
                 request.getIdExamen(),
                 cantidadAsignadas,
                 codigoResultado,
                 mensajeResultado
             );
+
         } catch (SQLException e) {
-            logger.severe("Error al asignar preguntas al examen: " + e.getMessage());
+            log.error("Error de base de datos al asignar preguntas al examen: {}", e.getMessage());
             return new PreguntaExamenResponseDTO(
                 request.getIdExamen(),
-                0, 
-                COD_ERROR_REGISTRO,
-                "Error al asignar preguntas al examen: " + e.getMessage()
+                0,
+                -1,
+                "Error de base de datos: " + e.getMessage()
+            );
+        } catch (Exception e) {
+            log.error("Error inesperado al asignar preguntas al examen: {}", e.getMessage());
+            return new PreguntaExamenResponseDTO(
+                request.getIdExamen(),
+                0,
+                -1,
+                "Error inesperado: " + e.getMessage()
             );
         } finally {
-            // Cerrar la conexión
+            // Cerrar recursos
+            if (stmt != null) {
+                try {
+                    stmt.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar el statement: {}", e.getMessage());
+                }
+            }
             if (connection != null) {
                 try {
                     connection.close();
                 } catch (SQLException e) {
-                    logger.severe("Error al cerrar la conexión: " + e.getMessage());
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
                 }
             }
         }
