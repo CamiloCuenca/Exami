@@ -14,18 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
 
-import java.sql.CallableStatement;
-import java.sql.Types;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.*;
+import java.util.*;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleTypes;
 import oracle.sql.ARRAY;
 import oracle.sql.ArrayDescriptor;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.SQLException;
 
 @Service
 @Transactional
@@ -221,6 +217,45 @@ public class PreguntaService {
         } catch (SQLException e) {
             log.error("Error al obtener el porcentaje de respuestas correctas: {}", e.getMessage());
             return null;
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+
+    public List<Map<String, Object>> obtenerExamenesYPocentajesPorEstudiante(Long idUsuario) {
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+            CallableStatement stmt = connection.prepareCall("{ call EXA_Y_PORC_POR_ESTUE(?, ?) }");
+
+            stmt.setLong(1, idUsuario);
+            stmt.registerOutParameter(2, OracleTypes.CURSOR);
+
+            stmt.execute();
+
+            ResultSet resultSet = (ResultSet) stmt.getObject(2);
+            List<Map<String, Object>> resultados = new ArrayList<>();
+
+            while (resultSet.next()) {
+                Map<String, Object> fila = new HashMap<>();
+                fila.put("ID_PRESENTACION", resultSet.getLong("ID_PRESENTACION"));
+                fila.put("NOMBRE_EXAMEN", resultSet.getString("NOMBRE_EXAMEN"));
+                fila.put("PORCENTAJE", resultSet.getDouble("PORCENTAJE"));
+                resultados.add(fila);
+            }
+
+            return resultados;
+
+        } catch (SQLException e) {
+            log.error("Error al ejecutar el procedimiento EXA_Y_PORC_POR_ESTUE: {}", e.getMessage());
+            return Collections.emptyList();
         } finally {
             if (connection != null) {
                 try {

@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import edu.uniquindio.exami.services.PreguntaService;
 
+import java.util.List;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/pregunta")
 public class PreguntaController {
@@ -24,5 +27,16 @@ public class PreguntaController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    @GetMapping("/examenes-porcentajes/{idUsuario}")
+        public ResponseEntity<List<Map<String, Object>>> obtenerExamenesYPocentajesPorEstudiante(@PathVariable Long idUsuario) {
+            List<Map<String, Object>> resultados = preguntaService.obtenerExamenesYPocentajesPorEstudiante(idUsuario);
+            if (!resultados.isEmpty()) {
+                return ResponseEntity.ok(resultados);
+            } else {
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+            }
+        }
+
 
 }
