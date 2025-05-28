@@ -17,7 +17,6 @@ import java.util.List;
 import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
-import java.sql.Types;
 import java.sql.Array;
 import java.sql.CallableStatement;
 import java.sql.SQLException;
@@ -400,6 +399,12 @@ public class ExamenService {
     }
 
 
+    /**
+     * Agrega una nueva pregunta al sistema.
+     * 
+     * @param request DTO con la información de la pregunta a crear
+     * @return PreguntaResponseDTO con el resultado de la operación
+     */
     @Transactional
     public PreguntaResponseDTO agregarPregunta(PreguntaRequestDTO request) {
         Connection connection = null;
@@ -410,6 +415,19 @@ public class ExamenService {
             if (!validarRequest(request)) {
                 return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
                         "Error en los parámetros de entrada");
+            }
+
+            // Validar que los arrays tengan la misma longitud
+            if (request.getTextosOpciones().size() != request.getSonCorrectas().size() ||
+                request.getTextosOpciones().size() != request.getOrdenes().size()) {
+                return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
+                        "Las listas de textos, corrección y órdenes deben tener la misma longitud");
+            }
+
+            // Validar que haya al menos una opción
+            if (request.getTextosOpciones().isEmpty()) {
+                return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
+                        "Debe proporcionar al menos una opción de respuesta");
             }
 
             connection = dataSource.getConnection();
@@ -455,6 +473,9 @@ public class ExamenService {
             Long idPreguntaCreada = stmt.getLong(13);
             Integer codigoResultado = stmt.getInt(14);
             String mensajeResultado = stmt.getString(15);
+
+            log.info("Pregunta agregada exitosamente. ID: {}, Código: {}, Mensaje: {}", 
+                    idPreguntaCreada, codigoResultado, mensajeResultado);
 
             return new PreguntaResponseDTO(
                     idPreguntaCreada,
@@ -943,6 +964,148 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
         } catch (SQLException e) {
             logger.severe("Error al obtener categoría por ID: " + e.getMessage());
             throw new RuntimeException("Error al obtener categoría", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene todos los niveles de dificultad
+     * @return Lista de niveles de dificultad
+     */
+    public List<NivelDificultadDTO> obtenerNivelesDificultad() {
+        List<NivelDificultadDTO> niveles = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_niveles_dificultad()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    NivelDificultadDTO nivel = new NivelDificultadDTO(
+                        rs.getLong("ID_NIVEL_DIFICULTAD"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    niveles.add(nivel);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener niveles de dificultad: " + e.getMessage());
+            throw new RuntimeException("Error al obtener niveles de dificultad", e);
+        }
+
+        return niveles;
+    }
+
+    /**
+     * Obtiene un nivel de dificultad específico por su ID
+     * @param idNivelDificultad ID del nivel de dificultad a obtener
+     * @return Nivel de dificultad encontrado o null si no existe
+     */
+    public NivelDificultadDTO obtenerNivelDificultadPorId(Long idNivelDificultad) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dificultad_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idNivelDificultad);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new NivelDificultadDTO(
+                        rs.getLong("ID_NIVEL_DIFICULTAD"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener nivel de dificultad por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener nivel de dificultad", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene todos los tipos de pregunta
+     * @return Lista de tipos de pregunta
+     */
+    public List<TipoPreguntaDTO> obtenerTiposPregunta() {
+        List<TipoPreguntaDTO> tipos = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tipos_pregunta()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    TipoPreguntaDTO tipo = new TipoPreguntaDTO(
+                        rs.getLong("ID_TIPO_PREGUNTA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    tipos.add(tipo);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tipos de pregunta: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tipos de pregunta", e);
+        }
+
+        return tipos;
+    }
+
+    /**
+     * Obtiene un tipo de pregunta específico por su ID
+     * @param idTipoPregunta ID del tipo de pregunta a obtener
+     * @return Tipo de pregunta encontrado o null si no existe
+     */
+    public TipoPreguntaDTO obtenerTipoPreguntaPorId(Long idTipoPregunta) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tipo_pregunta_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idTipoPregunta);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new TipoPreguntaDTO(
+                        rs.getLong("ID_TIPO_PREGUNTA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tipo de pregunta por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tipo de pregunta", e);
         }
 
         return null;
