@@ -24,6 +24,7 @@ import oracle.sql.ARRAY;
 import oracle.sql.ArrayDescriptor;
 
 import javax.sql.DataSource;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -270,6 +271,7 @@ public class PreguntaService {
         }
     }
 
+
     public List<PreguntaDisponibleDTO> obtenerPreguntasDisponibles(Long idDocente, Long idTema, Long idTipoPregunta, Long idNivelDificultad) {
         Connection connection = null;
         try {
@@ -334,5 +336,6 @@ public class PreguntaService {
             }
         }
     }
+
 
 } 

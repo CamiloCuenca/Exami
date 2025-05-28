@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.Map;
 
+import java.util.List;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/pregunta")
 public class PreguntaController {
@@ -39,6 +42,7 @@ public class PreguntaController {
                 return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
             }
         }
+
 
     @GetMapping("/disponibles/{idDocente}")
     public ResponseEntity<List<PreguntaDisponibleDTO>> obtenerPreguntasDisponibles(
