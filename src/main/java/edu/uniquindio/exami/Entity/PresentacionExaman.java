@@ -22,7 +22,7 @@ public class PresentacionExaman {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @OnDelete(action = OnDeleteAction.RESTRICT)
     @JoinColumn(name = "ID_EXAMEN", nullable = false)
-    private Examan idExamen;
+    private Examen idExamen;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @OnDelete(action = OnDeleteAction.RESTRICT)

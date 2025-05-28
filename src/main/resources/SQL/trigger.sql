@@ -7,18 +7,18 @@ CREATE GLOBAL TEMPORARY TABLE TEMP_USUARIOS_A_BLOQUEAR (
 CREATE OR REPLACE TRIGGER TRG_BLOQUEO_CUENTA_COMPUESTO
 FOR UPDATE OF INTENTOS_FALLIDOS ON USUARIO
 COMPOUND TRIGGER
-    
+
     -- Sección que se ejecuta antes del procesamiento de cada fila
     BEFORE EACH ROW IS
     BEGIN
         -- Verificar si se alcanzaron los 3 intentos fallidos
         IF :NEW.INTENTOS_FALLIDOS >= 3 AND (:OLD.INTENTOS_FALLIDOS < 3 OR :OLD.FECHA_BLOQUEO IS NULL) THEN
             -- Insertar en la tabla temporal para procesar después
-            INSERT INTO TEMP_USUARIOS_A_BLOQUEAR (ID_USUARIO) 
+            INSERT INTO TEMP_USUARIOS_A_BLOQUEAR (ID_USUARIO)
             VALUES (:NEW.ID_USUARIO);
         END IF;
     END BEFORE EACH ROW;
-    
+
     -- Sección que se ejecuta después de que se han procesado todas las filas
     AFTER STATEMENT IS
         CURSOR c_usuarios_a_bloquear IS
@@ -30,7 +30,7 @@ COMPOUND TRIGGER
         LOOP
             FETCH c_usuarios_a_bloquear INTO v_id_usuario;
             EXIT WHEN c_usuarios_a_bloquear%NOTFOUND;
-            
+
             -- Actualizar la fecha de bloqueo y el estado
             UPDATE USUARIO
             SET FECHA_BLOQUEO = SYSTIMESTAMP,
@@ -38,10 +38,10 @@ COMPOUND TRIGGER
             WHERE ID_USUARIO = v_id_usuario;
         END LOOP;
         CLOSE c_usuarios_a_bloquear;
-        
+
         -- La tabla temporal se limpiará automáticamente (ON COMMIT DELETE ROWS)
     END AFTER STATEMENT;
-    
+
 END TRG_BLOQUEO_CUENTA_COMPUESTO;
 /
 
@@ -253,6 +253,18 @@ END;
 /
 
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+--Tabla para guardar los resultados de los estudantes
+CREATE TABLE RESULTADO_EXAMEN_ESTUDIANTE (
+                                             ID_RESULTADO NUMBER PRIMARY KEY,
+                                             ID_PRESENTACION NUMBER NOT NULL,
+                                             ID_ESTUDIANTE NUMBER NOT NULL,
+                                             ID_EXAMEN NUMBER NOT NULL,
+                                             PUNTAJE_OBTENIDO NUMBER(5,2),
+                                             UMBRAL_APROBACION NUMBER(5,2),
+                                             RESULTADO VARCHAR2(10), -- 'APROBADO' o 'REPROBADO'
+                                             FECHA_REGISTRO TIMESTAMP DEFAULT SYSTIMESTAMP
+);
 
 --Trigger para guardar el puntaje de los estudiantes
 CREATE OR REPLACE TRIGGER TRG_RESULTADO_PRESENTACION

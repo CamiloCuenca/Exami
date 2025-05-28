@@ -15,7 +15,7 @@ import java.time.LocalDate;
 @Setter
 @Entity
 @Table(name = "EXAMEN")
-public class Examan {
+public class Examen {
     @Id
     @Column(name = "ID_EXAMEN", nullable = false)
     private Long id;
