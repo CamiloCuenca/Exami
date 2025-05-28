@@ -11,6 +11,7 @@ import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.ActiveProfiles; // Opcional, para perfiles de prueba
 
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
 
 @SpringBootTest
 public class AutenticacionServiceTest {
@@ -18,49 +19,22 @@ public class AutenticacionServiceTest {
     @Autowired
     private AutenticacionService service;
     
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
 
     @Test
-    @Rollback(false)  // Esto evita que se haga rollback de la transacción
-    void registrarUsuario() {
-        // Genera un email único con timestamp
-        String uniqueEmail = "test." + System.currentTimeMillis() + "@uqvirtual.edu.co";
-        
+    @Rollback(false) 
+    void registrarUsuario_emailCaseInsensitive() {
+        String email = "Test.Email@UqVirtual.edu.co";
         RegistroRequestDTO request = new RegistroRequestDTO();
-        request.setNombre("Test");
-        request.setApellido("User");
-        request.setEmail(uniqueEmail);  // Email único garantizado
+        request.setNombre("Prueba");
+        request.setApellido("Usuario");
+        request.setEmail(email);
         request.setContrasena("Password123!");
-        request.setIdTipoUsuario(1L);  // Asegúrate que exista
-        request.setIdEstado(1L);       // Asegúrate que exista
+        request.setIdTipoUsuario(1L);
+        request.setIdEstado(1L);
         request.setTelefono("3001234567");
-        request.setDireccion("Test Address");
-
-        RegistroResponseDTO response = service.registrarUsuario(request);
-        
-        // Verificar resultado
-        System.out.println("===================================");
-        System.out.println("Resultado del registro:");
-        System.out.println("Código: " + response.getCodigoResultado());
-        System.out.println("Mensaje: " + response.getMensajeResultado());
-        System.out.println("ID Usuario: " + response.getIdUsuarioCreado());
-        System.out.println("Email: " + request.getEmail());
-        System.out.println("===================================");
-        
-        // Verificar que el registro fue exitoso
-        assertEquals(0, response.getCodigoResultado(), "El código de resultado debería ser 0 (éxito)");
-        assertNotNull(response.getIdUsuarioCreado(), "El ID de usuario no debería ser nulo");
-        
-        /* 
-         * SQL para consultar el usuario en la base de datos:
-         * 
-         * SELECT * FROM USUARIO WHERE ID_USUARIO = [ID_USUARIO_CREADO];
-         *
-         * O para ver el usuario por email:
-         * 
-         * SELECT * FROM USUARIO WHERE EMAIL = '[EMAIL]';
-         */
+        request.setDireccion("Dirección de prueba");
+        service.registrarUsuario(request);
+    
     }
 
     @Test

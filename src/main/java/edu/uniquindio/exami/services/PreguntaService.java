@@ -1,5 +1,7 @@
 package edu.uniquindio.exami.services;
 
+import edu.uniquindio.exami.dto.OpcionRespuestaDisponibleDTO;
+import edu.uniquindio.exami.dto.PreguntaDisponibleDTO;
 import edu.uniquindio.exami.dto.PreguntaRequestDTO;
 import edu.uniquindio.exami.dto.PreguntaResponseDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -14,18 +16,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.PostConstruct;
 
-import java.sql.CallableStatement;
-import java.sql.Types;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.*;
+import java.util.*;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleTypes;
 import oracle.sql.ARRAY;
 import oracle.sql.ArrayDescriptor;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.SQLException;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @Transactional
@@ -231,5 +231,111 @@ public class PreguntaService {
             }
         }
     }
+
+
+    public List<Map<String, Object>> obtenerExamenesYPocentajesPorEstudiante(Long idUsuario) {
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+            CallableStatement stmt = connection.prepareCall("{ call EXA_Y_PORC_POR_ESTUE(?, ?) }");
+
+            stmt.setLong(1, idUsuario);
+            stmt.registerOutParameter(2, OracleTypes.CURSOR);
+
+            stmt.execute();
+
+            ResultSet resultSet = (ResultSet) stmt.getObject(2);
+            List<Map<String, Object>> resultados = new ArrayList<>();
+
+            while (resultSet.next()) {
+                Map<String, Object> fila = new HashMap<>();
+                fila.put("ID_PRESENTACION", resultSet.getLong("ID_PRESENTACION"));
+                fila.put("NOMBRE_EXAMEN", resultSet.getString("NOMBRE_EXAMEN"));
+                fila.put("PORCENTAJE", resultSet.getDouble("PORCENTAJE"));
+                resultados.add(fila);
+            }
+
+            return resultados;
+
+        } catch (SQLException e) {
+            log.error("Error al ejecutar el procedimiento EXA_Y_PORC_POR_ESTUE: {}", e.getMessage());
+            return Collections.emptyList();
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+
+    public List<PreguntaDisponibleDTO> obtenerPreguntasDisponibles(Long idDocente, Long idTema, Long idTipoPregunta, Long idNivelDificultad) {
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
+            CallableStatement stmt = connection.prepareCall("{ call OBTENER_PREGUNTAS_DISPONIBLES(?, ?, ?, ?, ?) }");
+
+            stmt.setLong(1, idDocente);
+            stmt.setObject(2, idTema);
+            stmt.setObject(3, idTipoPregunta);
+            stmt.setObject(4, idNivelDificultad);
+            stmt.registerOutParameter(5, OracleTypes.CURSOR);
+
+            stmt.execute();
+
+            ResultSet resultSet = (ResultSet) stmt.getObject(5);
+            List<PreguntaDisponibleDTO> preguntas = new ArrayList<>();
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            while (resultSet.next()) {
+                PreguntaDisponibleDTO pregunta = new PreguntaDisponibleDTO();
+                pregunta.setIdPregunta(resultSet.getLong("ID_PREGUNTA"));
+                pregunta.setTextoPregunta(resultSet.getString("TEXTO_PREGUNTA"));
+                pregunta.setIdTipoPregunta(resultSet.getLong("ID_TIPO_PREGUNTA"));
+                pregunta.setNombreTipoPregunta(resultSet.getString("NOMBRE_TIPO_PREGUNTA"));
+                pregunta.setIdNivelDificultad(resultSet.getLong("ID_NIVEL_DIFICULTAD"));
+                pregunta.setNombreNivelDificultad(resultSet.getString("NOMBRE_NIVEL_DIFICULTAD"));
+                pregunta.setIdTema(resultSet.getLong("ID_TEMA"));
+                pregunta.setNombreTema(resultSet.getString("NOMBRE_TEMA"));
+                pregunta.setEsPublica(resultSet.getBoolean("ES_PUBLICA"));
+                pregunta.setTiempoMaximo(resultSet.getInt("TIEMPO_MAXIMO"));
+                pregunta.setPorcentaje(resultSet.getDouble("PORCENTAJE"));
+                pregunta.setIdEstado(resultSet.getLong("ID_ESTADO"));
+                pregunta.setNombreEstado(resultSet.getString("NOMBRE_ESTADO"));
+
+                // Procesar el JSON de opciones
+                String opcionesJson = resultSet.getString("OPCIONES");
+                if (opcionesJson != null) {
+                    List<OpcionRespuestaDisponibleDTO> opciones = objectMapper.readValue(
+                        opcionesJson,
+                        objectMapper.getTypeFactory().constructCollectionType(
+                            List.class, OpcionRespuestaDisponibleDTO.class
+                        )
+                    );
+                    pregunta.setOpciones(opciones);
+                }
+
+                preguntas.add(pregunta);
+            }
+
+            return preguntas;
+
+        } catch (Exception e) {
+            log.error("Error al obtener preguntas disponibles: {}", e.getMessage());
+            return Collections.emptyList();
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
 
 } 

@@ -17,7 +17,6 @@ import java.util.List;
 import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
-import java.sql.Types;
 import java.sql.Array;
 import java.sql.CallableStatement;
 import java.sql.SQLException;
@@ -25,6 +24,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
 import oracle.jdbc.OracleConnection;
+import org.springframework.jdbc.core.RowMapper;
+import oracle.jdbc.OracleTypes;
+
 
 @Service
 @Transactional
@@ -37,6 +39,7 @@ public class ExamenService {
     
     private final JdbcTemplate jdbcTemplate;
     private SimpleJdbcCall crearExamenCall;
+    private SimpleJdbcCall obtenerExamenesEstudianteUICall;
 
     // Códigos de resultado para respuesta al cliente
     private static final Integer COD_EXITO = 0;
@@ -82,6 +85,14 @@ public class ExamenService {
                         new SqlOutParameter("p_codigo_resultado", Types.NUMERIC),
                         new SqlOutParameter("p_mensaje_resultado", Types.VARCHAR)
                 );
+
+        this.obtenerExamenesEstudianteUICall = new SimpleJdbcCall(jdbcTemplate)
+                .withProcedureName("OBTENER_EXAMENES_ESTUDIANTE_UI")
+                .declareParameters(
+                        new SqlParameter("p_id_estudiante", Types.NUMERIC),
+                        new SqlOutParameter("p_cursor", Types.REF, "SYS_REFCURSOR")
+                )
+                .returningResultSet("p_cursor", new ExamenEstudianteRowMapper());
     }
 
     public ExamenResponseDTO crearExamen(ExamenRequestDTO request) {
@@ -208,86 +219,79 @@ public class ExamenService {
      */
     public PreguntaExamenResponseDTO asignarPreguntasExamen(PreguntaExamenRequestDTO request) {
         Connection connection = null;
+        CallableStatement stmt = null;
         try {
-            logger.info("Intentando asignar preguntas al examen: " + request.getIdExamen());
-            
-            // Validación básica de datos requeridos
-            if (request.getIdExamen() == null || request.getIdDocente() == null || 
-                request.getIdsPreguntas() == null || request.getIdsPreguntas().isEmpty() ||
-                request.getPorcentajes() == null || request.getPorcentajes().isEmpty() ||
-                request.getOrdenes() == null || request.getOrdenes().isEmpty()) {
-                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
-                    "Los campos obligatorios (examen, docente, preguntas, porcentajes y órdenes) son requeridos");
-            }
-            
-            // Validar que las listas tengan la misma longitud
-            if (request.getIdsPreguntas().size() != request.getPorcentajes().size() || 
-                request.getIdsPreguntas().size() != request.getOrdenes().size()) {
-                return new PreguntaExamenResponseDTO(request.getIdExamen(), 0, COD_ERROR_PARAMETROS, 
-                    "Las listas de preguntas, porcentajes y órdenes deben tener la misma longitud");
-            }
-            
             connection = dataSource.getConnection();
-            
-            // Convertir listas de Java a arrays de Oracle
-            Array idsPreguntas = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            OracleConnection oracleConn = connection.unwrap(OracleConnection.class);
+            stmt = connection.prepareCall("{ call SP_ASIGNAR_PREGUNTAS_EXAMEN(?, ?, ?, ?, ?, ?, ?, ?, ?) }");
+
+            // Convertir las listas a arrays Oracle
+            Array idsPreguntasArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getIdsPreguntas().toArray());
-            
-            Array porcentajes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            Array porcentajesArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getPorcentajes().toArray());
-            
-            Array ordenes = connection.unwrap(OracleConnection.class).createARRAY("SYS.ODCINUMBERLIST", 
+            Array ordenesArray = oracleConn.createARRAY("SYS.ODCINUMBERLIST", 
                 request.getOrdenes().toArray());
-            
-            // Preparar la llamada al procedimiento almacenado
-            CallableStatement stmt = connection.prepareCall(
-                "{ call SP_ASIGNAR_PREGUNTAS_EXAMEN(?, ?, ?, ?, ?, ?, ?, ?) }");
-            
-            // Parámetros de entrada
+
+            // Establecer parámetros de entrada
             stmt.setLong(1, request.getIdExamen());
             stmt.setLong(2, request.getIdDocente());
-            stmt.setArray(3, idsPreguntas);
-            stmt.setArray(4, porcentajes);
-            stmt.setArray(5, ordenes);
-            
-            // Parámetros de salida
-            stmt.registerOutParameter(6, Types.INTEGER); // cantidad_asignadas
-            stmt.registerOutParameter(7, Types.INTEGER); // codigo_resultado
-            stmt.registerOutParameter(8, Types.VARCHAR); // mensaje_resultado
-            
+            stmt.setArray(3, idsPreguntasArray);
+            stmt.setArray(4, porcentajesArray);
+            stmt.setArray(5, ordenesArray);
+            stmt.setDouble(6, request.getUmbralAprobacion());
+
+            // Registrar parámetros de salida
+            stmt.registerOutParameter(7, Types.NUMERIC); // cantidad_asignadas
+            stmt.registerOutParameter(8, Types.NUMERIC); // codigo_resultado
+            stmt.registerOutParameter(9, Types.VARCHAR); // mensaje_resultado
+
             // Ejecutar el procedimiento
             stmt.execute();
-            
-            // Obtener los resultados
-            Integer cantidadAsignadas = stmt.getInt(6);
-            Integer codigoResultado = stmt.getInt(7);
-            String mensajeResultado = stmt.getString(8);
-            
-            // Cerrar recursos
-            stmt.close();
-            
-            // Crear y devolver la respuesta
+
+            // Obtener resultados
+            int cantidadAsignadas = stmt.getInt(7);
+            int codigoResultado = stmt.getInt(8);
+            String mensajeResultado = stmt.getString(9);
+
+            // Crear y retornar el DTO de respuesta
             return new PreguntaExamenResponseDTO(
                 request.getIdExamen(),
                 cantidadAsignadas,
                 codigoResultado,
                 mensajeResultado
             );
+
         } catch (SQLException e) {
-            logger.severe("Error al asignar preguntas al examen: " + e.getMessage());
+            log.error("Error de base de datos al asignar preguntas al examen: {}", e.getMessage());
             return new PreguntaExamenResponseDTO(
                 request.getIdExamen(),
-                0, 
-                COD_ERROR_REGISTRO,
-                "Error al asignar preguntas al examen: " + e.getMessage()
+                0,
+                -1,
+                "Error de base de datos: " + e.getMessage()
+            );
+        } catch (Exception e) {
+            log.error("Error inesperado al asignar preguntas al examen: {}", e.getMessage());
+            return new PreguntaExamenResponseDTO(
+                request.getIdExamen(),
+                0,
+                -1,
+                "Error inesperado: " + e.getMessage()
             );
         } finally {
-            // Cerrar la conexión
+            // Cerrar recursos
+            if (stmt != null) {
+                try {
+                    stmt.close();
+                } catch (SQLException e) {
+                    log.error("Error al cerrar el statement: {}", e.getMessage());
+                }
+            }
             if (connection != null) {
                 try {
                     connection.close();
                 } catch (SQLException e) {
-                    logger.severe("Error al cerrar la conexión: " + e.getMessage());
+                    log.error("Error al cerrar la conexión: {}", e.getMessage());
                 }
             }
         }
@@ -388,6 +392,12 @@ public class ExamenService {
     }
 
 
+    /**
+     * Agrega una nueva pregunta al sistema.
+     * 
+     * @param request DTO con la información de la pregunta a crear
+     * @return PreguntaResponseDTO con el resultado de la operación
+     */
     @Transactional
     public PreguntaResponseDTO agregarPregunta(PreguntaRequestDTO request) {
         Connection connection = null;
@@ -398,6 +408,19 @@ public class ExamenService {
             if (!validarRequest(request)) {
                 return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
                         "Error en los parámetros de entrada");
+            }
+
+            // Validar que los arrays tengan la misma longitud
+            if (request.getTextosOpciones().size() != request.getSonCorrectas().size() ||
+                request.getTextosOpciones().size() != request.getOrdenes().size()) {
+                return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
+                        "Las listas de textos, corrección y órdenes deben tener la misma longitud");
+            }
+
+            // Validar que haya al menos una opción
+            if (request.getTextosOpciones().isEmpty()) {
+                return new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS,
+                        "Debe proporcionar al menos una opción de respuesta");
             }
 
             connection = dataSource.getConnection();
@@ -443,6 +466,9 @@ public class ExamenService {
             Long idPreguntaCreada = stmt.getLong(13);
             Integer codigoResultado = stmt.getInt(14);
             String mensajeResultado = stmt.getString(15);
+
+            log.info("Pregunta agregada exitosamente. ID: {}, Código: {}, Mensaje: {}", 
+                    idPreguntaCreada, codigoResultado, mensajeResultado);
 
             return new PreguntaResponseDTO(
                     idPreguntaCreada,
@@ -513,49 +539,6 @@ public class ExamenService {
         return true;
     }
 
-
-    /**
-     * Obtiene la lista de exámenes pendientes para un estudiante.
-     * @param idEstudiante ID del estudiante
-     * @return Lista de DTOs con información de los exámenes pendientes
-     */
-    public List<ExamenCardDTO> listarExamenesPendientesEstudiante(Long idEstudiante) {
-        List<ExamenCardDTO> examenesPendientes = new ArrayList<>();
-
-        try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{? = call EXAMENES_PENDIENTES_EST(?)}")) {
-
-            // Registrar parámetros
-            stmt.registerOutParameter(1, Types.REF_CURSOR);
-            stmt.setLong(2, idEstudiante);
-
-            // Ejecutar función
-            stmt.execute();
-
-            // Obtener el cursor de resultados
-            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
-                while (rs.next()) {
-                    ExamenCardDTO examen = new ExamenCardDTO(
-                            rs.getLong("ID_EXAMEN"),
-                            rs.getString("NOMBRE"),
-                            rs.getString("DESCRIPCION"),
-                            rs.getString("FECHA_INICIO_FORMATEADA"),
-                            rs.getString("FECHA_FIN_FORMATEADA"),
-                            rs.getString("ESTADO"),
-                            rs.getString("NOMBRE_TEMA"),
-                            rs.getString("NOMBRE_CURSO")
-                    );
-                    examenesPendientes.add(examen);
-                }
-            }
-
-        } catch (SQLException e) {
-            logger.severe("Error al listar exámenes pendientes del estudiante: " + e.getMessage());
-            throw new RuntimeException("Error al obtener exámenes pendientes", e);
-        }
-
-        return examenesPendientes;
-    }
 
 /**
  * Obtiene la lista de exámenes en progreso para un estudiante.
@@ -681,4 +664,450 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
         }
     }
 
+    
+
+     /**
+     * Obtiene la lista de exámenes relevantes para un estudiante con su estado para la UI.
+     *
+     * @param idEstudiante El ID del estudiante.
+     * @return Una lista de ExamenEstudianteDetalleDTO.
+     */
+    public List<ExamenEstudianteDetalleDTO> obtenerExamenesEstudianteUI(Long idEstudiante) {
+        log.info("Llamando procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI para estudiante ID: {}", idEstudiante);
+
+        // Preparar los parámetros de entrada
+        Map<String, Object> inParams = new java.util.HashMap<>();
+        inParams.put("p_id_estudiante", idEstudiante);
+
+        // Ejecutar la llamada al procedimiento
+        Map<String, Object> result = obtenerExamenesEstudianteUICall.execute(inParams);
+
+        // SimpleJdbcCall ya mapea el cursor a la lista usando el RowMapper configurado
+        // El nombre de la clave en el mapa de resultado debe coincidir con el nombre del parámetro de salida del cursor ("p_cursor")
+        List<ExamenEstudianteDetalleDTO> examenes = (List<ExamenEstudianteDetalleDTO>) result.get("p_cursor");
+
+        if (examenes == null) {
+             log.warn("El procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI devolvió null para el cursor.");
+             return java.util.Collections.emptyList();
+        }
+
+        log.info("Procedimiento OBTENER_EXAMENES_ESTUDIANTE_UI retornó {} exámenes.", examenes.size());
+        return examenes;
+    }
+
+
+    public PresentacionExamenDTO iniciarExamen(Long idExamen, Long idEstudiante) {
+        return jdbcTemplate.execute(
+            "BEGIN INICIAR_EXAMEN(?, ?, ?); END;",
+            (CallableStatement cs) -> {
+                cs.setLong(1, idExamen);
+                cs.setLong(2, idEstudiante);
+                cs.registerOutParameter(3, OracleTypes.CURSOR);
+                cs.execute();
+                
+                try (ResultSet rs = (ResultSet) cs.getObject(3)) {
+                    if (rs.next()) {
+                        return new PresentacionExamenDTO(
+                            rs.getLong("idPresentacion"),
+                            rs.getLong("idExamen"),
+                            rs.getLong("idEstudiante"),
+                            rs.getTimestamp("fechaInicio").toInstant(),
+                            null,
+                            rs.getInt("tiempoLimite"),
+                            0,
+                            "EN_PROGRESO"
+                        );
+                    }
+                    throw new RuntimeException("No se pudo iniciar el examen");
+                }
+            }
+        );
+    }
+
+    public List<PreguntaExamenDTO> obtenerPreguntasExamen(Long idPresentacion) {
+        return jdbcTemplate.query(
+            "SELECT * FROM TABLE(OBTENER_PREGUNTAS_PRESENTACION(?))",
+            (rs, rowNum) -> {
+                PreguntaExamenDTO pregunta = new PreguntaExamenDTO();
+                pregunta.setIdPregunta(rs.getLong("ID_PREGUNTA"));
+                pregunta.setTextoPregunta(rs.getString("TEXTO_PREGUNTA"));
+                pregunta.setPorcentaje(rs.getInt("PORCENTAJE"));
+                pregunta.setOrden(rs.getInt("ORDEN"));
+                
+                // Obtener opciones de respuesta
+                List<OpcionRespuestaDTO> opciones = jdbcTemplate.query(
+                    "SELECT * FROM TABLE(PAQUETE_EXAMEN.OBTENER_OPCIONES_PREGUNTA(?))",
+                    (rs2, rowNum2) -> new OpcionRespuestaDTO(
+                        rs2.getLong("ID_OPCION"),
+                        rs2.getString("TEXTO"),
+                        rs2.getInt("ORDEN")
+                    ),
+                    pregunta.getIdPregunta()
+                );
+                pregunta.setOpciones(opciones);
+                
+                return pregunta;
+            },
+            idPresentacion
+        );
+    }
+
+    public RespuestaResponseDTO responderPregunta(Long idPresentacion, RespuestaEstudianteDTO respuesta) {
+        return jdbcTemplate.queryForObject(
+            "SELECT * FROM TABLE(RESPONDER_PREGUNTA(?, ?, ?, ?))",
+            (rs, rowNum) -> new RespuestaResponseDTO(
+                rs.getBoolean("CORRECTA"),
+                rs.getString("RETROALIMENTACION"),
+                rs.getBigDecimal("PUNTAJE_OBTENIDO")
+            ),
+            idPresentacion,
+            respuesta.getIdPregunta(),
+            respuesta.getIdOpcionSeleccionada(),
+            respuesta.getRespuestaTexto()
+        );
+    }
+
+    public PresentacionExamenDTO finalizarExamen(Long idPresentacion) {
+        return jdbcTemplate.queryForObject(
+            "SELECT * FROM TABLE(FINALIZAR_EXAMEN(?))",
+            (rs, rowNum) -> new PresentacionExamenDTO(
+                rs.getLong("ID_PRESENTACION"),
+                rs.getLong("ID_EXAMEN"),
+                rs.getLong("ID_ESTUDIANTE"),
+                rs.getTimestamp("FECHA_INICIO").toInstant(),
+                rs.getTimestamp("FECHA_FIN").toInstant(),
+                rs.getInt("TIEMPO_LIMITE"),
+                rs.getInt("TIEMPO_UTILIZADO"),
+                rs.getString("ESTADO")
+            ),
+            idPresentacion
+        );
+    }
+
+    /**
+     * RowMapper para convertir cada fila del cursor a un objeto ExamenEstudianteDetalleDTO.
+     * Debe coincidir exactamente con las columnas y el orden del SELECT en el procedimiento PL/SQL.
+     */
+    private static class ExamenEstudianteRowMapper implements RowMapper<ExamenEstudianteDetalleDTO> {
+        @Override
+        public ExamenEstudianteDetalleDTO mapRow(ResultSet rs, int rowNum) throws SQLException {
+            return new ExamenEstudianteDetalleDTO(
+                    rs.getLong("ID_EXAMEN"),                             // idExamen
+                    rs.getString("NOMBRE"),                              // nombreExamen
+                    rs.getString("DESCRIPCION"),                         // descripcion
+                    rs.getString("FECHA_INICIO_EXAMEN_FORMATEADA"),      // fechaInicioExamenFormateada
+                    rs.getString("FECHA_FIN_EXAMEN_FORMATEADA"),         // fechaFinExamenFormateada
+                    rs.getObject("TIEMPO_LIMITE", Integer.class),        // tiempoLimite
+                    rs.getBigDecimal("PESO_CURSO"),                      // pesoCurso
+                    rs.getBigDecimal("UMBRAL_APROBACION"),               // umbralAprobacion
+                    rs.getObject("CANTIDAD_PREGUNTAS_TOTAL", Integer.class), // cantidadPreguntasTotal
+                    rs.getObject("CANTIDAD_PREGUNTAS_PRESENTAR", Integer.class), // cantidadPreguntasPresentar
+                    rs.getObject("INTENTOS_PERMITIDOS", Integer.class),  // intentosPermitidos
+                    rs.getObject("MOSTRAR_RESULTADOS", Integer.class),   // mostrarResultados
+                    rs.getObject("PERMITIR_RETROALIMENTACION", Integer.class), // permitirRetroalimentacion
+                    rs.getString("NOMBRE_TEMA"),                         // nombreTema
+                    rs.getString("NOMBRE_CURSO"),                        // nombreCurso
+                    rs.getString("NOMBRE_ESTADO_EXAMEN"),                // nombreEstadoExamen
+                    rs.getObject("ID_PRESENTACION", Long.class),         // idPresentacion
+                    rs.getBigDecimal("PUNTAJE_OBTENIDO"),                // puntajeObtenido
+                    rs.getObject("TIEMPO_UTILIZADO", Integer.class),     // tiempoUtilizado
+                    rs.getTimestamp("FECHA_INICIO_PRESENTACION"),        // fechaInicioPresentacion
+                    rs.getTimestamp("FECHA_FIN_PRESENTACION"),           // fechaFinPresentacion
+                    rs.getObject("ID_ESTADO_PRESENTACION", Integer.class), // idEstadoPresentacion
+                    rs.getString("NOMBRE_ESTADO_PRESENTACION"),          // nombreEstadoPresentacion
+                    rs.getString("ESTADO_UI")                            // estadoUI
+            );
+        }
+    }
+
+    /**
+     * Obtiene todas las categorías de exámenes
+     * @return Lista de categorías
+     */
+    public List<CategoriaDTO> obtenerCategoriasExamenes() {
+        List<CategoriaDTO> categorias = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_categorias_examenes()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    CategoriaDTO categoria = new CategoriaDTO(
+                        rs.getLong("ID_CATEGORIA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    categorias.add(categoria);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener categorías de exámenes: " + e.getMessage());
+            throw new RuntimeException("Error al obtener categorías", e);
+        }
+
+        return categorias;
+    }
+
+    /**
+     * Obtiene todas las categorías de exámenes
+     * @return Lista de categorías
+     */
+    public List<TemaDTO> obtenerTemas() {
+        List<TemaDTO> temas = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_temas()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    TemaDTO tema = new TemaDTO(
+                        rs.getLong("ID_TEMA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    temas.add(tema);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener temas: " + e.getMessage());
+            throw new RuntimeException("Error al obtener temas", e);
+        }
+
+        return temas;
+    }
+
+    /**
+     * Obtiene un tema específico por su ID
+     * @param idTema ID del tema a obtener
+     * @return Tema encontrado o null si no existe
+     */
+    public TemaDTO obtenerTemaPorId(Long idTema) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tema_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idTema);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new TemaDTO(
+                        rs.getLong("ID_TEMA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tema por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tema", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene una categoría de examen específica por su ID
+     * @param idCategoria ID de la categoría a obtener
+     * @return Categoría encontrada o null si no existe
+     */
+    public CategoriaDTO obtenerCategoriaExamenPorId(Long idCategoria) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_categoria_examen_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idCategoria);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new CategoriaDTO(
+                        rs.getLong("ID_CATEGORIA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener categoría por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener categoría", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene todos los niveles de dificultad
+     * @return Lista de niveles de dificultad
+     */
+    public List<NivelDificultadDTO> obtenerNivelesDificultad() {
+        List<NivelDificultadDTO> niveles = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_niveles_dificultad()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    NivelDificultadDTO nivel = new NivelDificultadDTO(
+                        rs.getLong("ID_NIVEL_DIFICULTAD"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    niveles.add(nivel);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener niveles de dificultad: " + e.getMessage());
+            throw new RuntimeException("Error al obtener niveles de dificultad", e);
+        }
+
+        return niveles;
+    }
+
+    /**
+     * Obtiene un nivel de dificultad específico por su ID
+     * @param idNivelDificultad ID del nivel de dificultad a obtener
+     * @return Nivel de dificultad encontrado o null si no existe
+     */
+    public NivelDificultadDTO obtenerNivelDificultadPorId(Long idNivelDificultad) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dificultad_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idNivelDificultad);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new NivelDificultadDTO(
+                        rs.getLong("ID_NIVEL_DIFICULTAD"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener nivel de dificultad por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener nivel de dificultad", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Obtiene todos los tipos de pregunta
+     * @return Lista de tipos de pregunta
+     */
+    public List<TipoPreguntaDTO> obtenerTiposPregunta() {
+        List<TipoPreguntaDTO> tipos = new ArrayList<>();
+
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tipos_pregunta()}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                while (rs.next()) {
+                    TipoPreguntaDTO tipo = new TipoPreguntaDTO(
+                        rs.getLong("ID_TIPO_PREGUNTA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                    tipos.add(tipo);
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tipos de pregunta: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tipos de pregunta", e);
+        }
+
+        return tipos;
+    }
+
+    /**
+     * Obtiene un tipo de pregunta específico por su ID
+     * @param idTipoPregunta ID del tipo de pregunta a obtener
+     * @return Tipo de pregunta encontrado o null si no existe
+     */
+    public TipoPreguntaDTO obtenerTipoPreguntaPorId(Long idTipoPregunta) {
+        try (Connection conn = dataSource.getConnection();
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_tipo_pregunta_por_id(?)}")) {
+
+            // Registrar parámetros
+            stmt.registerOutParameter(1, Types.REF_CURSOR);
+            stmt.setLong(2, idTipoPregunta);
+
+            // Ejecutar función
+            stmt.execute();
+
+            // Obtener el cursor de resultados
+            try (ResultSet rs = (ResultSet) stmt.getObject(1)) {
+                if (rs.next()) {
+                    return new TipoPreguntaDTO(
+                        rs.getLong("ID_TIPO_PREGUNTA"),
+                        rs.getString("NOMBRE"),
+                        rs.getString("DESCRIPCION")
+                    );
+                }
+            }
+
+        } catch (SQLException e) {
+            logger.severe("Error al obtener tipo de pregunta por ID: " + e.getMessage());
+            throw new RuntimeException("Error al obtener tipo de pregunta", e);
+        }
+
+        return null;
+    }
+
+
+
+
+
+    
+   
 }

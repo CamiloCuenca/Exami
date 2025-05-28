@@ -254,17 +254,23 @@ END;
 
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
---Tabla para guardar los resultados de los estudantes
+
+-- Tabla para almacenar los resultados de los exámenes de los estudiantes
 CREATE TABLE RESULTADO_EXAMEN_ESTUDIANTE (
-                                             ID_RESULTADO NUMBER PRIMARY KEY,
-                                             ID_PRESENTACION NUMBER NOT NULL,
-                                             ID_ESTUDIANTE NUMBER NOT NULL,
-                                             ID_EXAMEN NUMBER NOT NULL,
-                                             PUNTAJE_OBTENIDO NUMBER(5,2),
-                                             UMBRAL_APROBACION NUMBER(5,2),
-                                             RESULTADO VARCHAR2(10), -- 'APROBADO' o 'REPROBADO'
-                                             FECHA_REGISTRO TIMESTAMP DEFAULT SYSTIMESTAMP
+    ID_RESULTADO NUMBER PRIMARY KEY,
+    ID_PRESENTACION NUMBER NOT NULL,
+    ID_ESTUDIANTE NUMBER NOT NULL,
+    ID_EXAMEN NUMBER NOT NULL,
+    PUNTAJE_OBTENIDO NUMBER(5,2) NOT NULL,
+    UMBRAL_APROBACION NUMBER(5,2) NOT NULL,
+    RESULTADO VARCHAR2(10) NOT NULL,
+    FECHA_REGISTRO TIMESTAMP DEFAULT SYSTIMESTAMP,
+    CONSTRAINT FK_RES_PRESENTACION FOREIGN KEY (ID_PRESENTACION) REFERENCES PRESENTACION_EXAMEN(ID_PRESENTACION),
+    CONSTRAINT FK_RES_ESTUDIANTE FOREIGN KEY (ID_ESTUDIANTE) REFERENCES USUARIO(ID_USUARIO),
+    CONSTRAINT FK_RES_EXAMEN FOREIGN KEY (ID_EXAMEN) REFERENCES EXAMEN(ID_EXAMEN),
+    CONSTRAINT CHK_RESULTADO CHECK (RESULTADO IN ('APROBADO', 'REPROBADO'))
 );
+
 
 --Trigger para guardar el puntaje de los estudiantes
 CREATE OR REPLACE TRIGGER TRG_RESULTADO_PRESENTACION

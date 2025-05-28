@@ -1,3 +1,7 @@
+-- Crear secuencias necesarias
+CREATE SEQUENCE SEQ_ID_USUARIO START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+CREATE SEQUENCE SEQ_EXAMEN_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
 --PROCEDURE PARA REGISTRAR USUARIO
 create or replace PROCEDURE SP_REGISTRAR_USUARIO_COMPLETO (
     p_nombre             IN  VARCHAR2,
@@ -38,7 +42,7 @@ BEGIN
         p_codigo_resultado  := COD_ERROR_PARAMETROS;
         p_mensaje_resultado := 'Error: Todos los campos obligatorios son requeridos';
         RETURN;
-END IF;
+    END IF;
 
     -- 2. Validación de longitudes máximas
     IF LENGTH(p_nombre) > 100 OR LENGTH(p_apellido) > 100
@@ -46,88 +50,87 @@ END IF;
         p_codigo_resultado  := COD_ERROR_PARAMETROS;
         p_mensaje_resultado := 'Error: Uno o más campos exceden la longitud máxima permitida (100 caracteres)';
         RETURN;
-END IF;
+    END IF;
 
     -- 3. Validar tipo de usuario (más eficiente)
-BEGIN
-SELECT 1 INTO v_tipo_usuario_valido
-FROM TIPO_USUARIO
-WHERE ID_TIPO_USUARIO = p_id_tipo_usuario
-  AND ROWNUM = 1;
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_tipo_usuario_valido
+        FROM TIPO_USUARIO
+        WHERE ID_TIPO_USUARIO = p_id_tipo_usuario
+          AND ROWNUM = 1;
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_TIPO_USUARIO_INVALIDO;
             p_mensaje_resultado := 'Error: Tipo de usuario no válido (ID: '||p_id_tipo_usuario||')';
             RETURN;
-END;
+    END;
 
     -- 4. Validar estado (más eficiente)
-BEGIN
-SELECT 1 INTO v_estado_valido
-FROM ESTADO_GENERAL
-WHERE ID_ESTADO = p_id_estado
-  AND ROWNUM = 1;
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_estado_valido
+        FROM ESTADO_GENERAL
+        WHERE ID_ESTADO = p_id_estado
+          AND ROWNUM = 1;
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_ESTADO_INVALIDO;
             p_mensaje_resultado := 'Error: Estado no válido (ID: '||p_id_estado||')';
             RETURN;
-END;
+    END;
 
--- 5. Verificar email único (corrección)
-BEGIN
-    SELECT COUNT(*) INTO v_email_existe
-    FROM USUARIO
-    WHERE EMAIL = p_email;
-    
-    IF v_email_existe > 0 THEN
-        p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
-        p_mensaje_resultado := 'Error: El email '||p_email||' ya está registrado';
-        RETURN;
-    END IF;
-END;
+    -- 5. Verificar email único (corrección)
+    BEGIN
+        SELECT COUNT(*) INTO v_email_existe
+        FROM USUARIO
+        WHERE UPPER(EMAIL) = UPPER(p_email);
+
+        IF v_email_existe > 0 THEN
+            p_codigo_resultado  := COD_EMAIL_YA_EXISTE;
+            p_mensaje_resultado := 'Error: El email '||p_email||' ya está registrado';
+            RETURN;
+        END IF;
+    END;
 
     -- 6. Validar secuencia
-BEGIN
-SELECT 1 INTO v_secuencia_valida
-FROM USER_SEQUENCES
-WHERE SEQUENCE_NAME = 'SEQ_ID_USUARIO';
-EXCEPTION
+    BEGIN
+        SELECT 1 INTO v_secuencia_valida
+        FROM USER_SEQUENCES
+        WHERE SEQUENCE_NAME = 'SEQ_ID_USUARIO';
+    EXCEPTION
         WHEN NO_DATA_FOUND THEN
             p_codigo_resultado  := COD_ERROR_SECUENCIA;
             p_mensaje_resultado := 'Error: Secuencia SEQ_ID_USUARIO no existe';
             RETURN;
-END;
+    END;
 
     -- 7. Obtener ID y registrar usuario
-BEGIN
-SELECT SEQ_ID_USUARIO.NEXTVAL INTO p_id_usuario_creado FROM DUAL;
+    BEGIN
+        SELECT SEQ_ID_USUARIO.NEXTVAL INTO p_id_usuario_creado FROM DUAL;
 
-INSERT INTO USUARIO (
-    ID_USUARIO, ID_TIPO_USUARIO, NOMBRE, APELLIDO,
-    EMAIL, CONTRASENA, ID_ESTADO, FECHA_REGISTRO,
-    INTENTOS_FALLIDOS, TELEFONO, DIRECCION
-) VALUES (
-             p_id_usuario_creado, p_id_tipo_usuario, p_nombre, p_apellido,
-             p_email, p_contrasena, p_id_estado, SYSDATE,
-             0, p_telefono, p_direccion
-         );
+        INSERT INTO USUARIO (
+            ID_USUARIO, ID_TIPO_USUARIO, NOMBRE, APELLIDO,
+            EMAIL, CONTRASENA, ID_ESTADO, FECHA_REGISTRO,
+            INTENTOS_FALLIDOS, TELEFONO, DIRECCION
+        ) VALUES (
+            p_id_usuario_creado, p_id_tipo_usuario, p_nombre, p_apellido,
+            p_email, p_contrasena, p_id_estado, SYSDATE,
+            0, p_telefono, p_direccion
+        );
 
-COMMIT;
-p_codigo_resultado := COD_EXITO;
+        COMMIT;
+        p_codigo_resultado := COD_EXITO;
         p_mensaje_resultado := 'Usuario registrado exitosamente. ID: '||p_id_usuario_creado;
 
-EXCEPTION
+    EXCEPTION
         WHEN DUP_VAL_ON_INDEX THEN
             ROLLBACK;
             p_codigo_resultado := COD_EMAIL_YA_EXISTE;
             p_mensaje_resultado := 'Error: El email ya existe (violación de índice único)';
-
-WHEN OTHERS THEN
+        WHEN OTHERS THEN
             ROLLBACK;
             p_codigo_resultado := COD_ERROR_REGISTRO;
             p_mensaje_resultado := 'Error técnico al registrar usuario: '||SUBSTR(SQLERRM,1,200);
-END;
+    END;
 END SP_REGISTRAR_USUARIO_COMPLETO;
 
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -492,13 +495,7 @@ END SP_CREAR_EXAMEN;
 
 --//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
--- PROCEDURE para agregar una nueva pregunta
-CREATE SEQUENCE SEQ_ID_PREGUNTA START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
-CREATE SEQUENCE SEQ_ID_OPCION START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-
-
--- PROCEDURE para agregar una nueva pregunta
 CREATE OR REPLACE PROCEDURE SP_AGREGAR_PREGUNTA (
     -- Parámetros básicos de la pregunta
     p_id_docente            IN NUMBER,
@@ -652,22 +649,57 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Verificar que haya al menos una opción correcta para tipos que lo requieren
-    IF p_id_tipo_pregunta != 3 THEN -- No es Verdadero/Falso
+    -- 9. Validaciones específicas según el tipo de pregunta
+    IF p_id_tipo_pregunta = 2 THEN -- Selección múltiple
+        v_num_opciones_correctas := 0;
         FOR i IN 1..p_son_correctas.COUNT LOOP
             IF p_son_correctas(i) = 1 THEN
                 v_num_opciones_correctas := v_num_opciones_correctas + 1;
             END IF;
         END LOOP;
-        
         IF v_num_opciones_correctas = 0 THEN
             p_codigo_resultado := COD_ERROR_OPCIONES;
-            p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta';
+            p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta en selección múltiple';
+            RETURN;
+        END IF;
+    ELSIF p_id_tipo_pregunta = 1 THEN -- Selección única
+        v_num_opciones_correctas := 0;
+        FOR i IN 1..p_son_correctas.COUNT LOOP
+            IF p_son_correctas(i) = 1 THEN
+                v_num_opciones_correctas := v_num_opciones_correctas + 1;
+            END IF;
+        END LOOP;
+        IF v_num_opciones_correctas != 1 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente una opción correcta en selección única';
+            RETURN;
+        END IF;
+    ELSIF p_id_tipo_pregunta = 3 THEN -- Verdadero/Falso
+        IF p_textos_opciones.COUNT != 2 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente dos opciones en Falso/Verdadero';
+            RETURN;
+        END IF;
+        IF UPPER(p_textos_opciones(1)) NOT IN ('VERDADERO', 'FALSO') OR 
+           UPPER(p_textos_opciones(2)) NOT IN ('VERDADERO', 'FALSO') THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Las opciones deben ser "Verdadero" y "Falso"';
+            RETURN;
+        END IF;
+        v_num_opciones_correctas := 0;
+        FOR i IN 1..p_son_correctas.COUNT LOOP
+            IF p_son_correctas(i) = 1 THEN
+                v_num_opciones_correctas := v_num_opciones_correctas + 1;
+            END IF;
+        END LOOP;
+        IF v_num_opciones_correctas != 1 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente una opción correcta en Falso/Verdadero';
             RETURN;
         END IF;
     END IF;
 
-    -- 9. Verificar y crear secuencias si no existen
+    -- 10. Verificar y crear secuencias si no existen
     -- Secuencia para preguntas
     BEGIN
         SELECT COUNT(*) INTO v_seq_exists
@@ -700,7 +732,7 @@ BEGIN
             RETURN;
     END;
 
-    -- 10. Insertar la pregunta y opciones de respuesta
+    -- 11. Insertar la pregunta y opciones de respuesta
     BEGIN
         -- Obtener el máximo ID de pregunta actual y añadir 1
         SELECT NVL(MAX(ID_PREGUNTA), 0) + 1 INTO v_id_pregunta FROM PREGUNTA;
@@ -758,7 +790,6 @@ EXCEPTION
         p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_AGREGAR_PREGUNTA;
 
-
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- PROCEDURE para asignar preguntas a un examen
@@ -771,6 +802,7 @@ CREATE OR REPLACE PROCEDURE SP_ASIGNAR_PREGUNTAS_EXAMEN (
     p_ids_preguntas        IN SYS.ODCINUMBERLIST,
     p_porcentajes          IN SYS.ODCINUMBERLIST,
     p_ordenes              IN SYS.ODCINUMBERLIST,
+    p_umbral_aprobacion    IN NUMBER,
     -- Parámetros de salida
     p_cantidad_asignadas   OUT NUMBER,
     p_codigo_resultado     OUT NUMBER,
@@ -778,39 +810,45 @@ CREATE OR REPLACE PROCEDURE SP_ASIGNAR_PREGUNTAS_EXAMEN (
 )
 IS
     -- Variables locales
-    v_examen_existe         NUMBER := 0;
-    v_docente_es_creador    NUMBER := 0;
-    v_examen_iniciado       NUMBER := 0;
-    v_pregunta_existe       NUMBER := 0;
-    v_pregunta_ya_asignada  NUMBER := 0;
-    v_suma_porcentajes      NUMBER := 0;
-    v_id_examen_pregunta    NUMBER;
-    v_fecha_actual          TIMESTAMP;
-    v_seq_existe            NUMBER := 0;
+    v_fecha_actual TIMESTAMP := SYSTIMESTAMP;
+    v_examen_existe NUMBER;
+    v_docente_es_creador NUMBER;
+    v_examen_iniciado NUMBER;
+    v_pregunta_existe NUMBER;
+    v_suma_porcentajes NUMBER := 0;
+    v_id_examen_pregunta NUMBER;
+    v_seq_existe NUMBER;
+    v_fecha_inicio TIMESTAMP;
+    v_fecha_fin TIMESTAMP;
+    v_cantidad_preguntas_total NUMBER;
+    v_cantidad_preguntas_presentar NUMBER;
+    v_preguntas_duplicadas NUMBER;
     
-    -- Códigos de resultado
-    COD_EXITO                     CONSTANT NUMBER := 0;
-    COD_ERROR_PARAMETROS          CONSTANT NUMBER := 1;
-    COD_EXAMEN_NO_EXISTE          CONSTANT NUMBER := 2;
-    COD_DOCENTE_NO_AUTORIZADO     CONSTANT NUMBER := 3;
-    COD_EXAMEN_YA_INICIADO        CONSTANT NUMBER := 4;
-    COD_PREGUNTA_NO_EXISTE        CONSTANT NUMBER := 5;
-    COD_PREGUNTA_YA_ASIGNADA      CONSTANT NUMBER := 6;
-    COD_ERROR_PORCENTAJES         CONSTANT NUMBER := 7;
-    COD_ERROR_REGISTRO            CONSTANT NUMBER := 8;
-    COD_ERROR_SECUENCIA           CONSTANT NUMBER := 9;
+    -- Constantes para códigos de resultado
+    COD_EXITO CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS CONSTANT NUMBER := 1;
+    COD_EXAMEN_NO_EXISTE CONSTANT NUMBER := 2;
+    COD_DOCENTE_NO_AUTORIZADO CONSTANT NUMBER := 3;
+    COD_EXAMEN_YA_INICIADO CONSTANT NUMBER := 4;
+    COD_PREGUNTA_NO_EXISTE CONSTANT NUMBER := 5;
+    COD_PREGUNTA_YA_ASIGNADA CONSTANT NUMBER := 6;
+    COD_ERROR_PORCENTAJES CONSTANT NUMBER := 7;
+    COD_ERROR_REGISTRO CONSTANT NUMBER := 8;
+    COD_ERROR_SECUENCIA CONSTANT NUMBER := 9;
+    COD_ERROR_CANTIDAD_PREGUNTAS CONSTANT NUMBER := 10;
+    COD_ERROR_UMBRAL CONSTANT NUMBER := 11;
 BEGIN
     -- Inicializar parámetros de salida
     p_cantidad_asignadas := 0;
     p_codigo_resultado := COD_ERROR_REGISTRO;
     p_mensaje_resultado := 'Error en el proceso de asignación de preguntas';
-    v_fecha_actual := SYSTIMESTAMP;
 
     -- 1. Validación de parámetros obligatorios
     IF p_id_examen IS NULL OR p_id_docente IS NULL OR 
-       p_ids_preguntas IS NULL OR p_ids_preguntas.COUNT = 0 THEN
+       p_ids_preguntas IS NULL OR p_ids_preguntas.COUNT = 0 OR
+       p_umbral_aprobacion IS NULL THEN
         p_codigo_resultado := COD_ERROR_PARAMETROS;
-        p_mensaje_resultado := 'Error: Los campos id_examen, id_docente y al menos una pregunta son obligatorios';
+        p_mensaje_resultado := 'Error: Los campos id_examen, id_docente, umbral_aprobacion y al menos una pregunta son obligatorios';
         RETURN;
     END IF;
 
@@ -822,9 +860,17 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 2. Validar que el examen exista
+    -- Validar que el umbral de aprobación esté entre 0 y 100
+    IF p_umbral_aprobacion < 0 OR p_umbral_aprobacion > 100 THEN
+        p_codigo_resultado := COD_ERROR_UMBRAL;
+        p_mensaje_resultado := 'Error: El umbral de aprobación debe estar entre 0 y 100';
+        RETURN;
+    END IF;
+
+    -- 2. Validar que el examen exista y obtener sus datos
     BEGIN
-        SELECT 1 INTO v_examen_existe
+        SELECT 1, FECHA_INICIO, FECHA_FIN, CANTIDAD_PREGUNTAS_TOTAL, CANTIDAD_PREGUNTAS_PRESENTAR 
+        INTO v_examen_existe, v_fecha_inicio, v_fecha_fin, v_cantidad_preguntas_total, v_cantidad_preguntas_presentar
         FROM EXAMEN
         WHERE ID_EXAMEN = p_id_examen
           AND ID_ESTADO = 1 -- Activo
@@ -836,7 +882,7 @@ BEGIN
             RETURN;
     END;
 
-    -- 3. Validar que el docente sea el creador del examen o tenga permisos
+    -- 3. Validar que el docente sea el creador del examen
     BEGIN
         SELECT 1 INTO v_docente_es_creador
         FROM EXAMEN
@@ -851,23 +897,42 @@ BEGIN
     END;
 
     -- 4. Validar que el examen no haya iniciado
-    BEGIN
-        SELECT 1 INTO v_examen_iniciado
-        FROM EXAMEN
-        WHERE ID_EXAMEN = p_id_examen
-          AND FECHA_INICIO IS NOT NULL
-          AND FECHA_INICIO < v_fecha_actual
-          AND ROWNUM = 1;
-        
-        p_codigo_resultado := COD_EXAMEN_YA_INICIADO;
-        p_mensaje_resultado := 'Error: No se pueden modificar las preguntas de un examen ya iniciado';
-        RETURN;
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            NULL; -- El examen no ha iniciado, se puede continuar
-    END;
+    IF v_fecha_actual >= v_fecha_inicio THEN
+        BEGIN
+            SELECT 1 INTO v_examen_iniciado
+            FROM PRESENTACION_EXAMEN
+            WHERE ID_EXAMEN = p_id_examen
+              AND ID_ESTADO = 6  -- EN_PROCESO
+              AND ROWNUM = 1;
+            
+            p_codigo_resultado := COD_EXAMEN_YA_INICIADO;
+            p_mensaje_resultado := 'Error: No se pueden modificar las preguntas de un examen ya iniciado';
+            RETURN;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                NULL;
+        END;
+    END IF;
 
-    -- 5. Verificar y crear secuencia si no existe
+    -- 5. Validar cantidad de preguntas
+    IF p_ids_preguntas.COUNT != v_cantidad_preguntas_total THEN
+        p_codigo_resultado := COD_ERROR_CANTIDAD_PREGUNTAS;
+        p_mensaje_resultado := 'Error: Se deben asignar exactamente ' || v_cantidad_preguntas_total || ' preguntas';
+        RETURN;
+    END IF;
+
+    -- 6. Verificar preguntas duplicadas
+    FOR i IN 1..p_ids_preguntas.COUNT LOOP
+        FOR j IN (i+1)..p_ids_preguntas.COUNT LOOP
+            IF p_ids_preguntas(i) = p_ids_preguntas(j) THEN
+                p_codigo_resultado := COD_ERROR_PARAMETROS;
+                p_mensaje_resultado := 'Error: No se permiten preguntas duplicadas';
+                RETURN;
+            END IF;
+        END LOOP;
+    END LOOP;
+
+    -- 7. Verificar y crear secuencia si no existe
     BEGIN
         SELECT COUNT(*) INTO v_seq_existe
         FROM USER_SEQUENCES
@@ -883,19 +948,27 @@ BEGIN
             RETURN;
     END;
 
-    -- 6. Validar la suma de porcentajes (debe ser igual a 100)
+    -- 8. Validar la suma de porcentajes (debe ser igual al umbral de aprobación)
     v_suma_porcentajes := 0;
     FOR i IN 1..p_porcentajes.COUNT LOOP
+        -- Validar que cada porcentaje esté entre 0 y 100
+        IF p_porcentajes(i) < 0 OR p_porcentajes(i) > 100 THEN
+            p_codigo_resultado := COD_ERROR_PORCENTAJES;
+            p_mensaje_resultado := 'Error: Los porcentajes deben estar entre 0 y 100';
+            RETURN;
+        END IF;
         v_suma_porcentajes := v_suma_porcentajes + p_porcentajes(i);
     END LOOP;
     
-    IF v_suma_porcentajes != 100 THEN
+    -- Permitir un pequeño margen de error (0.01) para manejar redondeos
+    IF ABS(v_suma_porcentajes - p_umbral_aprobacion) > 0.01 THEN
         p_codigo_resultado := COD_ERROR_PORCENTAJES;
-        p_mensaje_resultado := 'Error: La suma de los porcentajes debe ser igual a 100. Suma actual: ' || v_suma_porcentajes;
+        p_mensaje_resultado := 'Error: La suma de los porcentajes debe ser igual al umbral de aprobación (' || 
+                             p_umbral_aprobacion || '). Suma actual: ' || v_suma_porcentajes;
         RETURN;
     END IF;
 
-    -- 7. Procesar cada pregunta y asignarla al examen
+    -- 9. Procesar cada pregunta y asignarla al examen
     BEGIN
         -- Primero, eliminar las preguntas actualmente asignadas al examen
         DELETE FROM EXAMEN_PREGUNTA
@@ -906,14 +979,9 @@ BEGIN
             v_max_id NUMBER;
             v_current_seq_value NUMBER;
         BEGIN
-            -- Obtener el máximo ID actual
             SELECT NVL(MAX(ID_EXAMEN_PREGUNTA), 0) INTO v_max_id FROM EXAMEN_PREGUNTA;
-            
-            -- Obtener el valor actual de la secuencia
             SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_current_seq_value FROM DUAL;
             
-            -- Si el máximo ID es mayor que el valor actual de la secuencia,
-            -- incrementar la secuencia para que empiece en max_id + 1
             IF v_max_id >= v_current_seq_value THEN
                 EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_EXAMEN_PREGUNTA INCREMENT BY ' 
                     || TO_CHAR(v_max_id - v_current_seq_value + 1);
@@ -942,7 +1010,7 @@ BEGIN
             -- Generar ID para la asignación de pregunta-examen
             SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_id_examen_pregunta FROM DUAL;
             
-            -- Insertar la asignación (sin FECHA_ASIGNACION)
+            -- Insertar la asignación
             INSERT INTO EXAMEN_PREGUNTA (
                 ID_EXAMEN_PREGUNTA, ID_EXAMEN, ID_PREGUNTA, 
                 PORCENTAJE, ORDEN
@@ -954,10 +1022,11 @@ BEGIN
             p_cantidad_asignadas := p_cantidad_asignadas + 1;
         END LOOP;
         
-        -- Actualizar el examen para reflejar que tiene preguntas asignadas
+        -- Actualizar el examen
         UPDATE EXAMEN 
         SET FECHA_ULTIMA_MODIFICACION = v_fecha_actual,
-            ID_USUARIO_ULTIMA_MODIFICACION = p_id_docente
+            ID_USUARIO_ULTIMA_MODIFICACION = p_id_docente,
+            UMBRAL_APROBACION = p_umbral_aprobacion
         WHERE ID_EXAMEN = p_id_examen;
         
         -- Asignar valores de salida
@@ -971,10 +1040,6 @@ BEGIN
             p_codigo_resultado := COD_ERROR_REGISTRO;
             p_mensaje_resultado := 'Error al asignar preguntas al examen: ' || SUBSTR(SQLERRM, 1, 500);
     END;
-EXCEPTION
-    WHEN OTHERS THEN
-        p_codigo_resultado := COD_ERROR_REGISTRO;
-        p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_ASIGNAR_PREGUNTAS_EXAMEN;
 
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1086,38 +1151,9 @@ EXCEPTION
         p_mensaje := 'Error durante la recuperación de cuenta: ' || SUBSTR(SQLERRM, 1, 200);
 END RECUPERAR_CUENTA;
 
-CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_ESTUDIANTE(
-    p_id_estudiante IN NUMBER
-) RETURN SYS_REFCURSOR
-IS
-    v_cursor SYS_REFCURSOR;
-BEGIN
-    OPEN v_cursor FOR
-        SELECT 
-            e.ID_EXAMEN,
-            e.NOMBRE,
-            e.DESCRIPCION,
-            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO_FORMATEADA,
-            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN_FORMATEADA,
-            eg.NOMBRE as ESTADO,
-            t.NOMBRE as NOMBRE_TEMA,
-            c.NOMBRE as NOMBRE_CURSO
-        FROM EXAMEN e
-        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
-        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
-        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
-        INNER JOIN MATRICULA m ON c.ID_CURSO = m.ID_CURSO
-        WHERE m.ID_ESTUDIANTE = p_id_estudiante
-        AND m.ID_ESTADO = 1  -- Matrícula activa
-        AND e.ID_ESTADO IN (1, 2)  -- Examen activo o programado
-        ORDER BY e.FECHA_INICIO DESC;
-    
-    RETURN v_cursor;
-END;
-/
 
 
---////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+--/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 --Procedimiento para asignar preguntas aleatorias a un examen
 CREATE OR REPLACE PROCEDURE ASIGNAR_PREGUNTAS_ALEATORIAS (
@@ -1129,32 +1165,652 @@ IS
     V_PORCENTAJE NUMBER := ROUND(100 / P_CANTIDAD, 2);
 BEGIN
     -- Eliminar preguntas previas del examen si existen
-DELETE FROM EXAMEN_PREGUNTA
-WHERE ID_EXAMEN = P_ID_EXAMEN;
+    DELETE FROM EXAMEN_PREGUNTA
+    WHERE ID_EXAMEN = P_ID_EXAMEN;
 
--- Insertar nuevas preguntas aleatorias desde el tema indicado
-INSERT INTO EXAMEN_PREGUNTA (
-    ID_EXAMEN_PREGUNTA,
-    ID_EXAMEN,
-    ID_PREGUNTA,
-    PORCENTAJE,
-    ORDEN
-)
-SELECT
-    SEQ_EXAMEN_PREGUNTA.NEXTVAL,
-    P_ID_EXAMEN,
-    ID_PREGUNTA,
-    V_PORCENTAJE,
-    ROWNUM
-FROM (
-         SELECT ID_PREGUNTA
-         FROM PREGUNTA
-         WHERE ID_TEMA = (
-             SELECT ID_TEMA FROM TEMA WHERE NOMBRE = P_TEMA
-         )
-           AND ES_PUBLICA = 1
-         ORDER BY DBMS_RANDOM.VALUE
-     )
-WHERE ROWNUM <= P_CANTIDAD;
+    -- Insertar nuevas preguntas aleatorias desde el tema indicado
+    INSERT INTO EXAMEN_PREGUNTA (
+        ID_EXAMEN_PREGUNTA,
+        ID_EXAMEN,
+        ID_PREGUNTA,
+        PORCENTAJE,
+        ORDEN
+    )
+    SELECT
+        SEQ_EXAMEN_PREGUNTA.NEXTVAL,
+        P_ID_EXAMEN,
+        ID_PREGUNTA,
+        V_PORCENTAJE,
+        ROWNUM
+    FROM (
+        SELECT ID_PREGUNTA
+        FROM PREGUNTA
+        WHERE ID_TEMA = (
+            SELECT ID_TEMA FROM TEMA WHERE NOMBRE = P_TEMA
+        )
+        AND ES_PUBLICA = 1
+        ORDER BY DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM <= P_CANTIDAD;
+    
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(-20001, 'Error al asignar preguntas aleatorias: ' || SQLERRM);
+END ASIGNAR_PREGUNTAS_ALEATORIAS;
+
+CREATE OR REPLACE PROCEDURE OBTENER_EXAMENES_POR_ESTADO(
+    p_id_estado IN NUMBER,
+    p_id_estudiante IN NUMBER,  -- Añadimos este parámetro
+    p_cursor OUT SYS_REFCURSOR
+) AS
+BEGIN
+    OPEN p_cursor FOR
+        SELECT 
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') as FECHA_INICIO,
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') as FECHA_FIN,
+            e.TIEMPO_LIMITE,
+            e.PESO_CURSO,
+            e.UMBRAL_APROBACION,
+            t.NOMBRE as NOMBRE_TEMA,
+            c.NOMBRE as NOMBRE_CURSO,
+            eg.NOMBRE as NOMBRE_ESTADO
+        FROM EXAMEN e
+        INNER JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
+        INNER JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
+        INNER JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO
+        INNER JOIN MATRICULA m ON m.ID_ESTUDIANTE = p_id_estudiante
+        INNER JOIN GRUPO g ON m.ID_GRUPO = g.ID_GRUPO AND g.ID_CURSO = c.ID_CURSO
+        WHERE e.ID_ESTADO = p_id_estado
+        ORDER BY e.FECHA_INICIO DESC;
 END;
 /
+
+
+CREATE OR REPLACE PROCEDURE OBTENER_EXAMENES_ESTUDIANTE_UI (
+    p_id_estudiante IN NUMBER,
+    p_cursor        OUT SYS_REFCURSOR
+)
+AS
+    -- Constantes para los IDs de estado de ESTADO_GENERAL (basado en tu scriptInsert.sql)
+    -- ID_ESTADO_ACTIVO_GENERAL CONSTANT NUMBER := 1;
+    -- ID_ESTADO_INACTIVO_GENERAL CONSTANT NUMBER := 2;
+    -- ID_ESTADO_BLOQUEADO_GENERAL CONSTANT NUMBER := 3;
+    -- ID_ESTADO_EXAMEN_DISPONIBLE CONSTANT NUMBER := 4;
+    -- ID_ESTADO_PRESENTACION_EN_PROCESO CONSTANT NUMBER := 6;
+    -- ID_ESTADO_PRESENTACION_COMPLETADO CONSTANT NUMBER := 7;
+    -- ID_ESTADO_PRESENTACION_FINALIZADO CONSTANT NUMBER := 8; -- Asumo que 8 es similar a Completado para presentaciones
+    -- ID_ESTADO_EXAMEN_EXPIRADO CONSTANT NUMBER := 9;
+
+
+BEGIN
+    -- NOTA: Este procedimiento asume que el estudiante (p_id_estudiante) existe
+    -- y está matriculado en cursos que tienen exámenes asociados.
+    -- Si necesitas validar la existencia/estado del estudiante, podrías agregarlo aquí
+    -- al inicio del bloque BEGIN.
+
+    OPEN p_cursor FOR
+        SELECT
+            e.ID_EXAMEN,
+            e.NOMBRE,
+            e.DESCRIPCION,
+            TO_CHAR(e.FECHA_INICIO, 'DD/MM/YYYY HH24:MI') AS FECHA_INICIO_EXAMEN_FORMATEADA, -- Cambiado nombre para claridad
+            TO_CHAR(e.FECHA_FIN, 'DD/MM/YYYY HH24:MI') AS FECHA_FIN_EXAMEN_FORMATEADA,     -- Cambiado nombre para claridad
+            e.TIEMPO_LIMITE,
+            e.PESO_CURSO,
+            e.UMBRAL_APROBACION,
+            e.CANTIDAD_PREGUNTAS_TOTAL,
+            e.CANTIDAD_PREGUNTAS_PRESENTAR,
+            e.INTENTOS_PERMITIDOS,
+            e.MOSTRAR_RESULTADOS,
+            e.PERMITIR_RETROALIMENTACION,
+            t.NOMBRE AS NOMBRE_TEMA,
+            c.NOMBRE AS NOMBRE_CURSO,
+            -- Información de la presentación (puede ser NULL si no hay presentación)
+            pe.ID_PRESENTACION,
+            pe.PUNTAJE_OBTENIDO,
+            pe.TIEMPO_UTILIZADO,
+            pe.FECHA_INICIO AS FECHA_INICIO_PRESENTACION, -- **CORREGIDO: Usar FECHA_INICIO de PRESENTACION_EXAMEN**
+            pe.FECHA_FIN AS FECHA_FIN_PRESENTACION,       -- **AÑADIDO: Incluir FECHA_FIN de PRESENTACION_EXAMEN**
+            pe.ID_ESTADO AS ID_ESTADO_PRESENTACION, -- Incluir el ID del estado de la presentación
+            ep.NOMBRE AS NOMBRE_ESTADO_PRESENTACION, -- Nombre del estado de la presentación (ej: 'En proceso', 'Completado')
+             eg.NOMBRE AS NOMBRE_ESTADO_EXAMEN, -- Nombre del estado general del examen
+
+            -- Lógica para determinar el estado en la UI (ESTADO_UI)
+            CASE
+                -- PRIORIDAD 1: Expirados
+                -- Si la fecha fin del EXAMEN ya pasó Y la presentación NO está en estado 'Completado' (7) o 'Finalizado' (8)
+                WHEN CURRENT_TIMESTAMP > e.FECHA_FIN AND (pe.ID_ESTADO IS NULL OR pe.ID_ESTADO NOT IN (7, 8)) THEN 'Expirado'
+                -- O si el estado general del examen es 'Expirado' (9)
+                 WHEN e.ID_ESTADO = 9 THEN 'Expirado'
+
+
+                -- PRIORIDAD 2: Completados
+                -- Si existe una presentación Y su estado es 'Completado' (7) o 'Finalizado' (8)
+                WHEN pe.ID_ESTADO IN (7, 8) THEN 'Completado'
+
+                -- PRIORIDAD 3: En Progreso
+                -- Si existe una presentación Y su estado es 'En proceso' (6)
+                WHEN pe.ID_ESTADO = 6 THEN 'En Progreso'
+                 -- O si existe una presentación y NO está completada/finalizada (7,8) Y la fecha fin del EXAMEN AÚN NO PASA
+                WHEN pe.ID_PRESENTACION IS NOT NULL AND pe.ID_ESTADO NOT IN (7, 8) AND CURRENT_TIMESTAMP <= e.FECHA_FIN THEN 'En Progreso'
+
+
+                -- PRIORIDAD 4: Disponibles
+                -- Si la fecha actual está dentro del rango de inicio/fin del EXAMEN Y NO HAY presentación iniciada/completada/en proceso (pe.ID_ESTADO IS NULL)
+                WHEN CURRENT_TIMESTAMP BETWEEN e.FECHA_INICIO AND e.FECHA_FIN AND pe.ID_ESTADO IS NULL THEN 'Disponible'
+                 -- O si el estado general del examen es 'Disponible' (4) Y la fecha fin del EXAMEN AÚN NO PASA Y NO HAY presentación iniciada/completada
+                 WHEN e.ID_ESTADO = 4 AND CURRENT_TIMESTAMP <= e.FECHA_FIN AND pe.ID_ESTADO IS NULL THEN 'Disponible'
+                 -- O si el estado general del examen es 'Activo' (1) Y la fecha actual está dentro del rango del EXAMEN Y NO HAY presentación iniciada/completada
+                 WHEN e.ID_ESTADO = 1 AND CURRENT_TIMESTAMP BETWEEN e.FECHA_INICIO AND e.FECHA_FIN AND pe.ID_ESTADO IS NULL THEN 'Disponible'
+
+
+                -- PRIORIDAD 5: Pendiente (fecha futura)
+                -- Si la fecha de inicio del EXAMEN es en el futuro (y no ha sido marcado como Expirado por un estado de examen)
+                WHEN CURRENT_TIMESTAMP < e.FECHA_INICIO AND e.ID_ESTADO != 9 THEN 'Pendiente'
+
+
+                -- Otro/Indefinido: Cualquier otro caso no cubierto explícitamente
+                ELSE 'Otro/Indefinido'
+            END AS ESTADO_UI -- Campo que la UI usará para clasificar
+        FROM EXAMEN e
+        JOIN TEMA t ON e.ID_TEMA = t.ID_TEMA
+        JOIN CURSO c ON t.ID_CURSO = c.ID_CURSO
+        JOIN GRUPO g ON c.ID_CURSO = g.ID_CURSO -- Conexión via Curso a Grupo
+        JOIN MATRICULA m ON g.ID_GRUPO = m.ID_GRUPO -- Conexión via Grupo a Matricula
+        LEFT JOIN PRESENTACION_EXAMEN pe ON pe.ID_EXAMEN = e.ID_EXAMEN
+            AND pe.ID_ESTUDIANTE = p_id_estudiante -- LEFT JOIN para incluir exámenes sin presentación
+        LEFT JOIN ESTADO_GENERAL ep ON pe.ID_ESTADO = ep.ID_ESTADO -- LEFT JOIN para obtener el nombre del estado de la presentación (será NULL si no hay presentación)
+        LEFT JOIN ESTADO_GENERAL eg ON e.ID_ESTADO = eg.ID_ESTADO -- LEFT JOIN para obtener el nombre del estado general del examen
+
+        WHERE m.ID_ESTUDIANTE = p_id_estudiante -- Filtra por el estudiante
+        -- Opcional: Puedes añadir filtros adicionales aquí si no quieres mostrar ciertos estados de EXAMEN
+        -- Por ejemplo, para no mostrar exámenes Inactivos a nivel general:
+        -- AND e.ID_ESTADO != 2
+
+        ORDER BY e.FECHA_INICIO DESC; -- Ordenar por fecha de inicio (del examen) descendente
+
+END OBTENER_EXAMENES_ESTUDIANTE_UI;
+/
+
+-- Crear secuencia para presentaciones si no existe
+CREATE SEQUENCE SEQ_PRESENTACION_EXAMEN START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE OR REPLACE PROCEDURE INICIAR_EXAMEN(
+    p_id_examen IN NUMBER,
+    p_id_estudiante IN NUMBER,
+    p_cursor OUT SYS_REFCURSOR
+) AS
+    v_examen_existe NUMBER;
+    v_estudiante_existe NUMBER;
+    v_fecha_actual TIMESTAMP;
+    v_fecha_inicio TIMESTAMP;
+    v_fecha_fin TIMESTAMP;
+    v_intentos_permitidos NUMBER;
+    v_intentos_realizados NUMBER;
+    v_id_presentacion NUMBER;
+    v_presentacion_activa NUMBER;
+    v_estado_examen NUMBER;
+    v_max_id NUMBER;
+BEGIN
+    -- Inicializar fecha actual
+    v_fecha_actual := SYSTIMESTAMP;
+
+    -- Verificar si ya existe una presentación activa
+    SELECT COUNT(1) INTO v_presentacion_activa
+    FROM PRESENTACION_EXAMEN
+    WHERE ID_EXAMEN = p_id_examen
+    AND ID_ESTUDIANTE = p_id_estudiante
+    AND ID_ESTADO IN (1, 6); -- 1 = EN_PROGRESO, 6 = EN_PROCESO
+
+    IF v_presentacion_activa > 0 THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Ya existe una presentación activa para este examen');
+    END IF;
+
+    -- Verificar si el examen existe y obtener su estado
+    BEGIN
+        SELECT ID_ESTADO INTO v_estado_examen
+        FROM EXAMEN
+        WHERE ID_EXAMEN = p_id_examen;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20001, 'El examen no existe');
+    END;
+
+    -- Verificar estado del examen
+    IF v_estado_examen != 1 THEN -- 1 = ACTIVO
+        RAISE_APPLICATION_ERROR(-20001, 'El examen no está activo');
+    END IF;
+
+    -- Verificar si el estudiante existe y está activo
+    BEGIN
+        SELECT 1 INTO v_estudiante_existe
+        FROM USUARIO u
+        WHERE u.ID_USUARIO = p_id_estudiante
+        AND u.ID_ESTADO = 1; -- 1 = ACTIVO
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20001, 'El estudiante no existe o no está activo');
+    END;
+
+    -- Obtener fechas y configuración del examen
+    SELECT 
+        FECHA_INICIO,
+        FECHA_FIN,
+        INTENTOS_PERMITIDOS
+    INTO 
+        v_fecha_inicio,
+        v_fecha_fin,
+        v_intentos_permitidos
+    FROM EXAMEN
+    WHERE ID_EXAMEN = p_id_examen;
+
+    -- Verificar rango de fechas
+    IF v_fecha_actual < v_fecha_inicio THEN
+        RAISE_APPLICATION_ERROR(-20001, 'El examen aún no está disponible');
+    END IF;
+
+    IF v_fecha_actual > v_fecha_fin THEN
+        RAISE_APPLICATION_ERROR(-20001, 'El examen ya ha expirado');
+    END IF;
+
+    -- Contar intentos realizados
+    SELECT COUNT(1) INTO v_intentos_realizados
+    FROM PRESENTACION_EXAMEN
+    WHERE ID_EXAMEN = p_id_examen
+    AND ID_ESTUDIANTE = p_id_estudiante;
+
+    -- Verificar intentos permitidos
+    IF v_intentos_realizados >= v_intentos_permitidos THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Has alcanzado el número máximo de intentos permitidos');
+    END IF;
+
+    -- Obtener el máximo ID actual
+    SELECT NVL(MAX(ID_PRESENTACION), 0) INTO v_max_id FROM PRESENTACION_EXAMEN;
+    
+    -- Generar nuevo ID
+    v_id_presentacion := v_max_id + 1;
+
+    -- Crear nueva presentación
+    INSERT INTO PRESENTACION_EXAMEN (
+        ID_PRESENTACION,
+        ID_EXAMEN,
+        ID_ESTUDIANTE,
+        FECHA_INICIO,
+        ID_ESTADO,
+        PUNTAJE_OBTENIDO,
+        TIEMPO_UTILIZADO
+    ) VALUES (
+        v_id_presentacion,
+        p_id_examen,
+        p_id_estudiante,
+        v_fecha_actual,
+        6, -- 6 = EN_PROCESO
+        0, -- Puntaje inicial
+        0  -- Tiempo inicial
+    );
+
+    -- Abrir cursor con la información de la presentación
+    OPEN p_cursor FOR
+        SELECT 
+            pe.ID_PRESENTACION as idPresentacion,
+            pe.ID_EXAMEN as idExamen,
+            pe.ID_ESTUDIANTE as idEstudiante,
+            pe.FECHA_INICIO as fechaInicio,
+            e.TIEMPO_LIMITE as tiempoLimite,
+            0 as tiempoUtilizado,
+            'EN_PROGRESO' as estado
+        FROM PRESENTACION_EXAMEN pe, EXAMEN e
+        WHERE e.ID_EXAMEN = pe.ID_EXAMEN
+        AND pe.ID_PRESENTACION = v_id_presentacion;
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(-20001, 'Error al iniciar el examen: ' || SQLERRM);
+END;
+/
+
+CREATE OR REPLACE FUNCTION OBTENER_PREGUNTAS_PRESENTACION(
+    p_id_presentacion IN NUMBER
+) RETURN SYS_REFCURSOR
+AS
+    v_cursor SYS_REFCURSOR;
+    v_presentacion_existe NUMBER;
+    v_id_examen NUMBER;
+BEGIN
+    -- Validar que la presentación exista
+    BEGIN
+        SELECT ID_EXAMEN INTO v_id_examen
+        FROM PRESENTACION_EXAMEN
+        WHERE ID_PRESENTACION = p_id_presentacion
+          AND ID_ESTADO = 6 -- EN_PROCESO
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20005, 'La presentación no existe o no está en proceso');
+    END;
+
+    -- Obtener preguntas aleatorias para el examen
+    OPEN v_cursor FOR
+        SELECT 
+            ep.ID_PREGUNTA,
+            p.TEXTO_PREGUNTA,
+            ep.PORCENTAJE,
+            ep.ORDEN
+        FROM EXAMEN_PREGUNTA ep
+        INNER JOIN PREGUNTA p ON ep.ID_PREGUNTA = p.ID_PREGUNTA
+        WHERE ep.ID_EXAMEN = v_id_examen
+        ORDER BY DBMS_RANDOM.VALUE;
+
+    RETURN v_cursor;
+END;
+/
+
+CREATE OR REPLACE FUNCTION OBTENER_OPCIONES_PREGUNTA(
+    p_id_pregunta IN NUMBER
+) RETURN SYS_REFCURSOR
+AS
+    v_cursor SYS_REFCURSOR;
+BEGIN
+    OPEN v_cursor FOR
+        SELECT 
+            ID_OPCION,
+            TEXTO_OPCION,
+            ORDEN
+        FROM OPCION_RESPUESTA
+        WHERE ID_PREGUNTA = p_id_pregunta
+        ORDER BY ORDEN;
+
+    RETURN v_cursor;
+END;
+/
+
+CREATE OR REPLACE FUNCTION RESPONDER_PREGUNTA(
+    p_id_presentacion IN NUMBER,
+    p_id_pregunta IN NUMBER,
+    p_id_opcion IN NUMBER,
+    p_respuesta_texto IN VARCHAR2
+) RETURN SYS_REFCURSOR
+AS
+    v_cursor SYS_REFCURSOR;
+    v_presentacion_existe NUMBER;
+    v_pregunta_existe NUMBER;
+    v_es_correcta NUMBER;
+    v_puntaje NUMBER;
+    v_id_respuesta NUMBER;
+    v_fecha_actual TIMESTAMP := SYSTIMESTAMP;
+BEGIN
+    -- Validar que la presentación exista y esté en proceso
+    BEGIN
+        SELECT 1 INTO v_presentacion_existe
+        FROM PRESENTACION_EXAMEN
+        WHERE ID_PRESENTACION = p_id_presentacion
+          AND ID_ESTADO = 6 -- EN_PROCESO
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20006, 'La presentación no existe o no está en proceso');
+    END;
+
+    -- Validar que la pregunta pertenezca al examen
+    BEGIN
+        SELECT 1 INTO v_pregunta_existe
+        FROM EXAMEN_PREGUNTA ep
+        INNER JOIN PRESENTACION_EXAMEN pe ON ep.ID_EXAMEN = pe.ID_EXAMEN
+        WHERE pe.ID_PRESENTACION = p_id_presentacion
+          AND ep.ID_PREGUNTA = p_id_pregunta
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20007, 'La pregunta no pertenece a este examen');
+    END;
+
+    -- Generar ID para la respuesta
+    SELECT SEQ_ID_RESPUESTA.NEXTVAL INTO v_id_respuesta FROM DUAL;
+
+    -- Determinar si la respuesta es correcta y calcular puntaje
+    IF p_id_opcion IS NOT NULL THEN
+        -- Para preguntas de opción múltiple
+        SELECT 
+            CASE WHEN ES_CORRECTA = 1 THEN 1 ELSE 0 END,
+            ep.PORCENTAJE
+        INTO v_es_correcta, v_puntaje
+        FROM OPCION_RESPUESTA op
+        INNER JOIN EXAMEN_PREGUNTA ep ON op.ID_PREGUNTA = ep.ID_PREGUNTA
+        WHERE op.ID_OPCION = p_id_opcion
+          AND ep.ID_PREGUNTA = p_id_pregunta;
+    ELSE
+        -- Para preguntas abiertas (aquí deberías implementar tu lógica de evaluación)
+        v_es_correcta := 0; -- Por defecto incorrecta
+        v_puntaje := 0; -- Por defecto 0 puntos
+    END IF;
+
+    -- Registrar la respuesta
+    INSERT INTO RESPUESTA_ESTUDIANTE (
+        ID_RESPUESTA,
+        ID_PRESENTACION,
+        ID_PREGUNTA,
+        RESPUESTA_DADA,
+        ES_CORRECTA,
+        PUNTAJE_OBTENIDO,
+        TIEMPO_UTILIZADO
+    ) VALUES (
+        v_id_respuesta,
+        p_id_presentacion,
+        p_id_pregunta,
+        p_respuesta_texto,
+        v_es_correcta,
+        v_puntaje,
+        EXTRACT(SECOND FROM (v_fecha_actual - (SELECT FECHA_INICIO FROM PRESENTACION_EXAMEN WHERE ID_PRESENTACION = p_id_presentacion)))
+    );
+
+    -- Retornar el resultado
+    OPEN v_cursor FOR
+        SELECT 
+            v_es_correcta as CORRECTA,
+            CASE 
+                WHEN v_es_correcta = 1 THEN '¡Respuesta correcta!'
+                ELSE 'Respuesta incorrecta'
+            END as RETROALIMENTACION,
+            v_puntaje as PUNTAJE_OBTENIDO
+        FROM DUAL;
+
+    RETURN v_cursor;
+END;
+/
+
+CREATE OR REPLACE FUNCTION FINALIZAR_EXAMEN(
+    p_id_presentacion IN NUMBER
+) RETURN SYS_REFCURSOR
+AS
+    v_cursor SYS_REFCURSOR;
+    v_presentacion_existe NUMBER;
+    v_fecha_actual TIMESTAMP := SYSTIMESTAMP;
+    v_puntaje_total NUMBER;
+BEGIN
+    -- Validar que la presentación exista y esté en proceso
+    BEGIN
+        SELECT 1 INTO v_presentacion_existe
+        FROM PRESENTACION_EXAMEN
+        WHERE ID_PRESENTACION = p_id_presentacion
+          AND ID_ESTADO = 6 -- EN_PROCESO
+          AND ROWNUM = 1;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(-20008, 'La presentación no existe o no está en proceso');
+    END;
+
+    -- Calcular puntaje total
+    SELECT NVL(SUM(PUNTAJE_OBTENIDO), 0) INTO v_puntaje_total
+    FROM RESPUESTA_ESTUDIANTE
+    WHERE ID_PRESENTACION = p_id_presentacion;
+
+    -- Actualizar la presentación
+    UPDATE PRESENTACION_EXAMEN
+    SET 
+        FECHA_FIN = v_fecha_actual,
+        PUNTAJE_OBTENIDO = v_puntaje_total,
+        TIEMPO_UTILIZADO = EXTRACT(SECOND FROM (v_fecha_actual - FECHA_INICIO)),
+        ID_ESTADO = 7 -- COMPLETADO
+    WHERE ID_PRESENTACION = p_id_presentacion;
+
+    -- Retornar la información actualizada
+    OPEN v_cursor FOR
+        SELECT 
+            pe.ID_PRESENTACION,
+            pe.ID_EXAMEN,
+            pe.ID_ESTUDIANTE,
+            pe.FECHA_INICIO,
+            pe.FECHA_FIN,
+            e.TIEMPO_LIMITE,
+            pe.TIEMPO_UTILIZADO,
+            'COMPLETADO' as ESTADO
+        FROM PRESENTACION_EXAMEN pe
+        INNER JOIN EXAMEN e ON pe.ID_EXAMEN = e.ID_EXAMEN
+        WHERE pe.ID_PRESENTACION = p_id_presentacion;
+
+    RETURN v_cursor;
+END;
+/
+
+-- Bloque de prueba para INICIAR_EXAMEN
+DECLARE
+    v_cursor SYS_REFCURSOR;
+    v_id_presentacion NUMBER;
+    v_id_examen NUMBER;
+    v_id_estudiante NUMBER;
+    v_fecha_inicio TIMESTAMP;
+    v_tiempo_limite NUMBER;
+    v_tiempo_utilizado NUMBER;
+    v_estado VARCHAR2(50);
+    v_count NUMBER;
+BEGIN
+    -- 1. Verificar datos existentes
+    DBMS_OUTPUT.PUT_LINE('=== Verificando datos existentes ===');
+    
+    -- Verificar exámenes activos
+    SELECT COUNT(1) INTO v_count
+    FROM EXAMEN
+    WHERE ID_ESTADO = 1;
+    
+    DBMS_OUTPUT.PUT_LINE('Exámenes activos encontrados: ' || v_count);
+    
+    -- Verificar estudiantes activos
+    SELECT COUNT(1) INTO v_count
+    FROM USUARIO
+    WHERE ID_ESTADO = 1
+    AND ID_TIPO_USUARIO = 1;  -- Tipo estudiante
+    
+    DBMS_OUTPUT.PUT_LINE('Estudiantes activos encontrados: ' || v_count);
+    
+    -- 2. Obtener datos para la prueba
+    DBMS_OUTPUT.PUT_LINE('=== Obteniendo datos para la prueba ===');
+    
+    -- Verificar examen activo
+    BEGIN
+        SELECT ID_EXAMEN INTO v_id_examen
+        FROM EXAMEN
+        WHERE ID_ESTADO = 1
+        AND ROWNUM = 1;
+        
+        DBMS_OUTPUT.PUT_LINE('ID Examen encontrado: ' || v_id_examen);
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            DBMS_OUTPUT.PUT_LINE('No se encontró ningún examen activo');
+            RETURN;
+    END;
+    
+    -- Verificar estudiante activo
+    BEGIN
+        SELECT ID_USUARIO INTO v_id_estudiante
+        FROM USUARIO
+        WHERE ID_ESTADO = 1
+        AND ID_TIPO_USUARIO = 1  -- Tipo estudiante
+        AND ROWNUM = 1;
+        
+        DBMS_OUTPUT.PUT_LINE('ID Estudiante encontrado: ' || v_id_estudiante);
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            DBMS_OUTPUT.PUT_LINE('No se encontró ningún estudiante activo');
+            RETURN;
+    END;
+    
+    -- 3. Verificar si ya existe una presentación activa
+    SELECT COUNT(1) INTO v_count
+    FROM PRESENTACION_EXAMEN
+    WHERE ID_EXAMEN = v_id_examen
+    AND ID_ESTUDIANTE = v_id_estudiante
+    AND ID_ESTADO IN (1, 6);
+    
+    DBMS_OUTPUT.PUT_LINE('Presentaciones activas existentes: ' || v_count);
+    
+    -- 4. Intentar iniciar el examen
+    DBMS_OUTPUT.PUT_LINE('=== Intentando iniciar examen ===');
+    
+    BEGIN
+        INICIAR_EXAMEN(v_id_examen, v_id_estudiante, v_cursor);
+        
+        -- 5. Leer los resultados del cursor
+        LOOP
+            FETCH v_cursor INTO v_id_presentacion, v_id_examen, v_id_estudiante, 
+                              v_fecha_inicio, v_tiempo_limite, v_tiempo_utilizado, v_estado;
+            EXIT WHEN v_cursor%NOTFOUND;
+            
+            DBMS_OUTPUT.PUT_LINE('=== Presentación creada exitosamente ===');
+            DBMS_OUTPUT.PUT_LINE('ID Presentación: ' || v_id_presentacion);
+            DBMS_OUTPUT.PUT_LINE('ID Examen: ' || v_id_examen);
+            DBMS_OUTPUT.PUT_LINE('ID Estudiante: ' || v_id_estudiante);
+            DBMS_OUTPUT.PUT_LINE('Fecha Inicio: ' || v_fecha_inicio);
+            DBMS_OUTPUT.PUT_LINE('Tiempo Límite: ' || v_tiempo_limite);
+            DBMS_OUTPUT.PUT_LINE('Tiempo Utilizado: ' || v_tiempo_utilizado);
+            DBMS_OUTPUT.PUT_LINE('Estado: ' || v_estado);
+        END LOOP;
+        
+        CLOSE v_cursor;
+        
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Error al iniciar examen: ' || SQLERRM);
+            IF v_cursor%ISOPEN THEN
+                CLOSE v_cursor;
+            END IF;
+    END;
+    
+    -- 6. Verificar que se creó la presentación
+    DBMS_OUTPUT.PUT_LINE('=== Verificando presentación creada ===');
+    
+    SELECT COUNT(1) INTO v_count
+    FROM PRESENTACION_EXAMEN
+    WHERE ID_EXAMEN = v_id_examen
+    AND ID_ESTUDIANTE = v_id_estudiante
+    AND ID_ESTADO = 6;
+    
+    DBMS_OUTPUT.PUT_LINE('Presentaciones activas encontradas: ' || v_count);
+    
+END;
+/
+
+-- Procere para obtener las estadisticas de las repuestas de un estudainet
+
+CREATE OR REPLACE PROCEDURE EXA_Y_PORC_POR_ESTUE  (
+    P_ID_USUARIO IN NUMBER,
+    CURSOR_RESULT OUT SYS_REFCURSOR
+) AS
+BEGIN
+OPEN CURSOR_RESULT FOR
+SELECT
+    pe.ID_PRESENTACION,
+    e.NOMBRE AS NOMBRE_EXAMEN,
+    PORCENTAJE_PREGUNTAS_CORRECTAS(pe.ID_PRESENTACION) AS PORCENTAJE
+FROM PRESENTACION_EXAMEN pe
+         JOIN EXAMEN e ON pe.ID_EXAMEN = e.ID_EXAMEN
+WHERE pe.ID_ESTUDIANTE = P_ID_USUARIO;
+END;
+/
+

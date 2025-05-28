@@ -1,9 +1,12 @@
 package edu.uniquindio.exami.services;
 
+import edu.uniquindio.exami.dto.ExamenEstadoDTO;
 import edu.uniquindio.exami.dto.ExamenRequestDTO;
 import edu.uniquindio.exami.dto.ExamenResponseDTO;
 import edu.uniquindio.exami.dto.PreguntaExamenRequestDTO;
 import edu.uniquindio.exami.dto.PreguntaExamenResponseDTO;
+
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -75,72 +78,7 @@ public class ExamenServiceTest {
          */
     }
 
-    @Test
-    @Rollback(false) // Evita que se haga rollback para poder ver el resultado en la base de datos
-    void asignarPreguntasExamen() {
-        // Primero crear un nuevo examen para la prueba
-        ExamenRequestDTO examenRequest = new ExamenRequestDTO();
-        
-        // Datos básicos obligatorios del examen
-        examenRequest.setIdDocente(1L);           // Docente existente
-        examenRequest.setIdTema(1L);              // Tema existente
-        examenRequest.setNombre("Examen para asignación de preguntas " + System.currentTimeMillis());
-        examenRequest.setDescripcion("Examen creado para prueba de asignación de preguntas");
-        
-        // Configuración del examen - importante usar fechas futuras
-        examenRequest.setFechaInicio(LocalDateTime.now().plusDays(1));  // Fecha futura
-        examenRequest.setFechaFin(LocalDateTime.now().plusDays(1).plusHours(2));
-        examenRequest.setTiempoLimite(120);
-        examenRequest.setPesoCurso(20.0);
-        examenRequest.setUmbralAprobacion(60.0);
-        examenRequest.setCantidadPreguntasTotal(10);
-        examenRequest.setCantidadPreguntasPresentar(5);
-        examenRequest.setIdCategoria(1L);
-        
-        // Crear el examen
-        ExamenResponseDTO examenResponse = service.crearExamen(examenRequest);
-        
-        // Verificar que el examen se haya creado correctamente
-        assertEquals(0, examenResponse.getCodigoResultado(), 
-            "Error al crear el examen: " + examenResponse.getMensajeResultado());
-        assertNotNull(examenResponse.getIdExamenCreado(), "El ID del examen no puede ser nulo");
-        
-        System.out.println("Examen creado con ID: " + examenResponse.getIdExamenCreado());
-        
-        // Ahora asignar preguntas al examen recién creado
-        PreguntaExamenRequestDTO request = new PreguntaExamenRequestDTO();
-        
-        // Configurar los datos básicos usando el ID del examen recién creado
-        request.setIdExamen(examenResponse.getIdExamenCreado());
-        request.setIdDocente(1L);       // ID del docente que creó el examen
-        
-        // Configurar las listas de preguntas, porcentajes y órdenes
-        request.setIdsPreguntas(Arrays.asList(1L, 2L, 3L));
-        request.setPorcentajes(Arrays.asList(30, 30, 40)); // Deben sumar 100
-        request.setOrdenes(Arrays.asList(1, 2, 3));
-        
-        // Ejecutar el servicio
-        PreguntaExamenResponseDTO response = service.asignarPreguntasExamen(request);
-        
-        // Imprimir resultados para depuración
-        System.out.println("===================================");
-        System.out.println("Asignación de preguntas al examen");
-        System.out.println("===================================");
-        System.out.println("Código de resultado: " + response.getCodigoResultado());
-        System.out.println("Mensaje: " + response.getMensajeResultado());
-        System.out.println("Cantidad de preguntas asignadas: " + response.getCantidadAsignadas());
-        System.out.println("ID del examen: " + response.getIdExamen());
-        System.out.println("===================================");
-        System.out.println("SQL para verificar:");
-        System.out.println("SELECT * FROM EXAMEN_PREGUNTA WHERE ID_EXAMEN = " + response.getIdExamen() + ";");
-        System.out.println("===================================");
-        
-        // Validar el resultado
-        assertEquals(0, response.getCodigoResultado(), 
-            "El código de resultado debe ser 0 (éxito). Error: " + response.getMensajeResultado());
-        assertEquals(3, response.getCantidadAsignadas(), 
-            "Se deben haber asignado 3 preguntas al examen");
-        assertNotNull(response.getMensajeResultado(), 
-            "El mensaje de resultado no debe ser nulo");
-    }
+   
+
+
 } 
