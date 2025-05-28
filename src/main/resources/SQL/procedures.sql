@@ -649,22 +649,57 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Verificar que haya al menos una opción correcta para tipos que lo requieren
-    IF p_id_tipo_pregunta != 3 THEN -- No es Verdadero/Falso
+    -- 9. Validaciones específicas según el tipo de pregunta
+    IF p_id_tipo_pregunta = 1 THEN -- Selección múltiple
+        v_num_opciones_correctas := 0;
         FOR i IN 1..p_son_correctas.COUNT LOOP
             IF p_son_correctas(i) = 1 THEN
                 v_num_opciones_correctas := v_num_opciones_correctas + 1;
             END IF;
         END LOOP;
-        
         IF v_num_opciones_correctas = 0 THEN
             p_codigo_resultado := COD_ERROR_OPCIONES;
-            p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta';
+            p_mensaje_resultado := 'Error: Debe haber al menos una opción correcta en selección múltiple';
+            RETURN;
+        END IF;
+    ELSIF p_id_tipo_pregunta = 2 THEN -- Selección única
+        v_num_opciones_correctas := 0;
+        FOR i IN 1..p_son_correctas.COUNT LOOP
+            IF p_son_correctas(i) = 1 THEN
+                v_num_opciones_correctas := v_num_opciones_correctas + 1;
+            END IF;
+        END LOOP;
+        IF v_num_opciones_correctas != 1 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente una opción correcta en selección única';
+            RETURN;
+        END IF;
+    ELSIF p_id_tipo_pregunta = 3 THEN -- Falso/Verdadero
+        IF p_textos_opciones.COUNT != 2 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente dos opciones en Falso/Verdadero';
+            RETURN;
+        END IF;
+        IF UPPER(p_textos_opciones(1)) NOT IN ('VERDADERO', 'FALSO') OR 
+           UPPER(p_textos_opciones(2)) NOT IN ('VERDADERO', 'FALSO') THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Las opciones deben ser "Verdadero" y "Falso"';
+            RETURN;
+        END IF;
+        v_num_opciones_correctas := 0;
+        FOR i IN 1..p_son_correctas.COUNT LOOP
+            IF p_son_correctas(i) = 1 THEN
+                v_num_opciones_correctas := v_num_opciones_correctas + 1;
+            END IF;
+        END LOOP;
+        IF v_num_opciones_correctas != 1 THEN
+            p_codigo_resultado := COD_ERROR_OPCIONES;
+            p_mensaje_resultado := 'Error: Debe haber exactamente una opción correcta en Falso/Verdadero';
             RETURN;
         END IF;
     END IF;
 
-    -- 9. Verificar y crear secuencias si no existen
+    -- 10. Verificar y crear secuencias si no existen
     -- Secuencia para preguntas
     BEGIN
         SELECT COUNT(*) INTO v_seq_exists
@@ -697,7 +732,7 @@ BEGIN
             RETURN;
     END;
 
-    -- 10. Insertar la pregunta y opciones de respuesta
+    -- 11. Insertar la pregunta y opciones de respuesta
     BEGIN
         -- Obtener el máximo ID de pregunta actual y añadir 1
         SELECT NVL(MAX(ID_PREGUNTA), 0) + 1 INTO v_id_pregunta FROM PREGUNTA;

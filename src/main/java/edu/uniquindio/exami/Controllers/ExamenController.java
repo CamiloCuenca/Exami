@@ -2,7 +2,8 @@ package edu.uniquindio.exami.Controllers;
 
 import edu.uniquindio.exami.dto.*;
 import edu.uniquindio.exami.services.ExamenService;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,13 +13,19 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/examen")
-@RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:5173")
+@Slf4j
 public class ExamenController {
 
     private static final Integer COD_EXITO = 0;
+    private static final Integer COD_ERROR_PARAMETROS = -1;
+    private static final Integer COD_ERROR_REGISTRO = -2;
 
     private final ExamenService examenService;
+
+    @Autowired
+    public ExamenController(ExamenService examenService) {
+        this.examenService = examenService;
+    }
 
     @GetMapping("/mis-examenes/{idEstudiante}")
     public ResponseEntity<?> listarExamenesPorEstudiante(@PathVariable Long idEstudiante) {
@@ -109,50 +116,65 @@ public class ExamenController {
         }
     }
 
-    @PostMapping("/Crear")
+    /**
+     * Endpoint para crear una nueva pregunta en el sistema.
+     * 
+     * @param request DTO con la información de la pregunta a crear
+     * @return ResponseEntity con el resultado de la operación
+     */
+    @PostMapping("/crear-pregunta")
     public ResponseEntity<PreguntaResponseDTO> agregarPregunta(@RequestBody PreguntaRequestDTO request) {
-        PreguntaResponseDTO response = examenService.agregarPregunta(request);
+        log.info("Recibida solicitud para crear pregunta: {}", request.getTextoPregunta());
+        
+        try {
+            // Validar que el tema exista
+            if (!validarTema(request.getIdTema())) {
+                log.warn("Intento de crear pregunta con tema no válido: {}", request.getIdTema());
+                return ResponseEntity.badRequest().body(
+                    new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS, "El tema especificado no existe")
+                );
+            }
 
-        if (response.getCodigoResultado() == COD_EXITO) {
-            return ResponseEntity.ok(response);
-        } else {
-            return ResponseEntity.badRequest().body(response);
+            // Validación específica para preguntas Verdadero/Falso
+            if (request.getIdTipoPregunta() == 3) { // Asumiendo que 1 es el ID para Verdadero/Falso
+                if (request.getTextosOpciones() == null || request.getTextosOpciones().size() != 2) {
+                    log.warn("Intento de crear pregunta Verdadero/Falso con número incorrecto de opciones");
+                    return ResponseEntity.badRequest().body(
+                        new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS, 
+                            "Las preguntas Verdadero/Falso deben tener exactamente dos opciones")
+                    );
+                }
+            }
+
+            PreguntaResponseDTO response = examenService.agregarPregunta(request);
+
+            if (response.getCodigoResultado() == COD_EXITO) {
+                log.info("Pregunta creada exitosamente con ID: {}", response.getIdPreguntaCreada());
+                return ResponseEntity.ok(response);
+            } else {
+                log.warn("Error al crear pregunta. Código: {}, Mensaje: {}", 
+                    response.getCodigoResultado(), response.getMensajeResultado());
+                return ResponseEntity.badRequest().body(response);
+            }
+        } catch (Exception e) {
+            log.error("Error inesperado al crear pregunta: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new PreguntaResponseDTO(null, COD_ERROR_REGISTRO, 
+                    "Error interno del servidor al procesar la solicitud"));
         }
     }
 
-    @GetMapping("/en-progreso/{idEstudiante}")
-    public ResponseEntity<?> listarExamenesEnProgresoEstudiante(@PathVariable Long idEstudiante) {
+    /**
+     * Valida que el tema exista
+     * @param idTema ID del tema a validar
+     * @return true si el tema existe, false en caso contrario
+     */
+    private boolean validarTema(Long idTema) {
         try {
-            List<ExamenCardDTO> examenesEnProgreso = examenService.listarExamenesEnProgresoEstudiante(idEstudiante);
-            return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", examenesEnProgreso,
-                "message", "Exámenes en progreso obtenidos exitosamente"
-            ));
+            return examenService.obtenerTemaPorId(idTema) != null;
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of(
-                    "success", false,
-                    "message", "Error al obtener los exámenes en progreso: " + e.getMessage()
-                ));
-        }
-    }
-
-    @GetMapping("/expirados/{idEstudiante}")
-    public ResponseEntity<?> listarExamenesExpiradosEstudiante(@PathVariable Long idEstudiante) {
-        try {
-            List<ExamenCardDTO> examenesExpirados = examenService.listarExamenesExpiradosEstudiante(idEstudiante);
-            return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", examenesExpirados,
-                "message", "Exámenes expirados obtenidos exitosamente"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of(
-                    "success", false,
-                    "message", "Error al obtener los exámenes expirados: " + e.getMessage()
-                ));
+            log.error("Error al validar tema: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -334,6 +356,94 @@ public class ExamenController {
                 .body(Map.of(
                     "success", false,
                     "message", "Error al obtener el tema: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/niveles-dificultad")
+    public ResponseEntity<?> obtenerNivelesDificultad() {
+        try {
+            List<NivelDificultadDTO> niveles = examenService.obtenerNivelesDificultad();
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", niveles,
+                "message", "Niveles de dificultad obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los niveles de dificultad: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/niveles-dificultad/{idNivelDificultad}")
+    public ResponseEntity<?> obtenerNivelDificultadPorId(@PathVariable Long idNivelDificultad) {
+        try {
+            NivelDificultadDTO nivel = examenService.obtenerNivelDificultadPorId(idNivelDificultad);
+            if (nivel != null) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", nivel,
+                    "message", "Nivel de dificultad obtenido exitosamente"
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Nivel de dificultad no encontrado"
+                    ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener el nivel de dificultad: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/tipos-pregunta")
+    public ResponseEntity<?> obtenerTiposPregunta() {
+        try {
+            List<TipoPreguntaDTO> tipos = examenService.obtenerTiposPregunta();
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "data", tipos,
+                "message", "Tipos de pregunta obtenidos exitosamente"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener los tipos de pregunta: " + e.getMessage()
+                ));
+        }
+    }
+
+    @GetMapping("/tipos-pregunta/{idTipoPregunta}")
+    public ResponseEntity<?> obtenerTipoPreguntaPorId(@PathVariable Long idTipoPregunta) {
+        try {
+            TipoPreguntaDTO tipo = examenService.obtenerTipoPreguntaPorId(idTipoPregunta);
+            if (tipo != null) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", tipo,
+                    "message", "Tipo de pregunta obtenido exitosamente"
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                        "success", false,
+                        "message", "Tipo de pregunta no encontrado"
+                    ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error al obtener el tipo de pregunta: " + e.getMessage()
                 ));
         }
     }
