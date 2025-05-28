@@ -145,6 +145,77 @@ public class ExamenController {
                         "message", "Las preguntas Verdadero/Falso deben tener exactamente dos opciones"
                     ));
                 }
+
+                // Validar que las opciones sean "Verdadero" y "Falso"
+                String opcion1 = request.getTextosOpciones().get(0).trim();
+                String opcion2 = request.getTextosOpciones().get(1).trim();
+                
+                if (!opcion1.equalsIgnoreCase("Verdadero") || !opcion2.equalsIgnoreCase("Falso")) {
+                    log.warn("Intento de crear pregunta Verdadero/Falso con opciones incorrectas");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Las opciones deben ser 'Verdadero' y 'Falso' en ese orden"
+                    ));
+                }
+
+                // Validar que haya exactamente una opción correcta
+                long opcionesCorrectas = request.getSonCorrectas().stream()
+                    .filter(correcta -> correcta == 1)
+                    .count();
+                
+                if (opcionesCorrectas != 1) {
+                    log.warn("Intento de crear pregunta Verdadero/Falso con número incorrecto de opciones correctas");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Debe haber exactamente una opción correcta en preguntas Verdadero/Falso"
+                    ));
+                }
+            }
+            // Validación específica para preguntas de selección múltiple
+            else if (request.getIdTipoPregunta() == 2) {
+                if (request.getTextosOpciones() == null || request.getTextosOpciones().size() < 2) {
+                    log.warn("Intento de crear pregunta de selección múltiple con menos de dos opciones");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Las preguntas de selección múltiple deben tener al menos dos opciones"
+                    ));
+                }
+
+                // Validar que haya al menos una opción correcta
+                long opcionesCorrectas = request.getSonCorrectas().stream()
+                    .filter(correcta -> correcta == 1)
+                    .count();
+                
+                if (opcionesCorrectas < 1) {
+                    log.warn("Intento de crear pregunta de selección múltiple sin opciones correctas");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Debe haber al menos una opción correcta en preguntas de selección múltiple"
+                    ));
+                }
+            }
+            // Validación para preguntas de selección única
+            else if (request.getIdTipoPregunta() == 1) {
+                if (request.getTextosOpciones() == null || request.getTextosOpciones().size() < 2) {
+                    log.warn("Intento de crear pregunta de selección única con menos de dos opciones");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Las preguntas de selección única deben tener al menos dos opciones"
+                    ));
+                }
+
+                // Validar que haya exactamente una opción correcta
+                long opcionesCorrectas = request.getSonCorrectas().stream()
+                    .filter(correcta -> correcta == 1)
+                    .count();
+                
+                if (opcionesCorrectas != 1) {
+                    log.warn("Intento de crear pregunta de selección única con número incorrecto de opciones correctas");
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Debe haber exactamente una opción correcta en preguntas de selección única"
+                    ));
+                }
             }
 
             PreguntaResponseDTO response = examenService.agregarPregunta(request);
