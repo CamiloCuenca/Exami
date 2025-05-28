@@ -123,26 +123,27 @@ public class ExamenController {
      * @return ResponseEntity con el resultado de la operación
      */
     @PostMapping("/crear-pregunta")
-    public ResponseEntity<PreguntaResponseDTO> agregarPregunta(@RequestBody PreguntaRequestDTO request) {
+    public ResponseEntity<?> agregarPregunta(@RequestBody PreguntaRequestDTO request) {
         log.info("Recibida solicitud para crear pregunta: {}", request.getTextoPregunta());
         
         try {
             // Validar que el tema exista
             if (!validarTema(request.getIdTema())) {
                 log.warn("Intento de crear pregunta con tema no válido: {}", request.getIdTema());
-                return ResponseEntity.badRequest().body(
-                    new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS, "El tema especificado no existe")
-                );
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "El tema especificado no existe"
+                ));
             }
 
             // Validación específica para preguntas Verdadero/Falso
-            if (request.getIdTipoPregunta() == 3) { // Asumiendo que 1 es el ID para Verdadero/Falso
+            if (request.getIdTipoPregunta() == 3) {
                 if (request.getTextosOpciones() == null || request.getTextosOpciones().size() != 2) {
                     log.warn("Intento de crear pregunta Verdadero/Falso con número incorrecto de opciones");
-                    return ResponseEntity.badRequest().body(
-                        new PreguntaResponseDTO(null, COD_ERROR_PARAMETROS, 
-                            "Las preguntas Verdadero/Falso deben tener exactamente dos opciones")
-                    );
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Las preguntas Verdadero/Falso deben tener exactamente dos opciones"
+                    ));
                 }
             }
 
@@ -150,17 +151,26 @@ public class ExamenController {
 
             if (response.getCodigoResultado() == COD_EXITO) {
                 log.info("Pregunta creada exitosamente con ID: {}", response.getIdPreguntaCreada());
-                return ResponseEntity.ok(response);
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", response,
+                    "message", "Pregunta creada exitosamente"
+                ));
             } else {
                 log.warn("Error al crear pregunta. Código: {}, Mensaje: {}", 
                     response.getCodigoResultado(), response.getMensajeResultado());
-                return ResponseEntity.badRequest().body(response);
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", response.getMensajeResultado()
+                ));
             }
         } catch (Exception e) {
             log.error("Error inesperado al crear pregunta: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new PreguntaResponseDTO(null, COD_ERROR_REGISTRO, 
-                    "Error interno del servidor al procesar la solicitud"));
+                .body(Map.of(
+                    "success", false,
+                    "message", "Error interno del servidor al procesar la solicitud"
+                ));
         }
     }
 
