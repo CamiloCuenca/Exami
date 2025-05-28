@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import edu.uniquindio.exami.services.PreguntaService;
+import edu.uniquindio.exami.dto.PreguntaDisponibleDTO;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 import java.util.Map;
@@ -38,5 +40,21 @@ public class PreguntaController {
             }
         }
 
+    @GetMapping("/disponibles/{idDocente}")
+    public ResponseEntity<List<PreguntaDisponibleDTO>> obtenerPreguntasDisponibles(
+            @PathVariable Long idDocente,
+            @RequestParam(required = false) Long idTema,
+            @RequestParam(required = false) Long idTipoPregunta,
+            @RequestParam(required = false) Long idNivelDificultad) {
+        
+        List<PreguntaDisponibleDTO> preguntas = preguntaService.obtenerPreguntasDisponibles(
+            idDocente, idTema, idTipoPregunta, idNivelDificultad);
+        
+        if (!preguntas.isEmpty()) {
+            return ResponseEntity.ok(preguntas);
+        } else {
+            return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        }
+    }
 
 }
