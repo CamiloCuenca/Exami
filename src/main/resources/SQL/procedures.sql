@@ -802,6 +802,7 @@ CREATE OR REPLACE PROCEDURE SP_ASIGNAR_PREGUNTAS_EXAMEN (
     p_ids_preguntas        IN SYS.ODCINUMBERLIST,
     p_porcentajes          IN SYS.ODCINUMBERLIST,
     p_ordenes              IN SYS.ODCINUMBERLIST,
+    p_umbral_aprobacion    IN NUMBER,
     -- Parámetros de salida
     p_cantidad_asignadas   OUT NUMBER,
     p_codigo_resultado     OUT NUMBER,
@@ -809,41 +810,45 @@ CREATE OR REPLACE PROCEDURE SP_ASIGNAR_PREGUNTAS_EXAMEN (
 )
 IS
     -- Variables locales
-    v_examen_existe         NUMBER := 0;
-    v_docente_es_creador    NUMBER := 0;
-    v_examen_iniciado       NUMBER := 0;
-    v_pregunta_existe       NUMBER := 0;
-    v_pregunta_ya_asignada  NUMBER := 0;
-    v_suma_porcentajes      NUMBER := 0;
-    v_id_examen_pregunta    NUMBER;
-    v_fecha_actual          TIMESTAMP;
-    v_seq_existe            NUMBER := 0;
-    v_fecha_inicio          TIMESTAMP;
-    v_fecha_fin             TIMESTAMP;
+    v_fecha_actual TIMESTAMP := SYSTIMESTAMP;
+    v_examen_existe NUMBER;
+    v_docente_es_creador NUMBER;
+    v_examen_iniciado NUMBER;
+    v_pregunta_existe NUMBER;
+    v_suma_porcentajes NUMBER := 0;
+    v_id_examen_pregunta NUMBER;
+    v_seq_existe NUMBER;
+    v_fecha_inicio TIMESTAMP;
+    v_fecha_fin TIMESTAMP;
+    v_cantidad_preguntas_total NUMBER;
+    v_cantidad_preguntas_presentar NUMBER;
+    v_preguntas_duplicadas NUMBER;
     
-    -- Códigos de resultado
-    COD_EXITO                     CONSTANT NUMBER := 0;
-    COD_ERROR_PARAMETROS          CONSTANT NUMBER := 1;
-    COD_EXAMEN_NO_EXISTE          CONSTANT NUMBER := 2;
-    COD_DOCENTE_NO_AUTORIZADO     CONSTANT NUMBER := 3;
-    COD_EXAMEN_YA_INICIADO        CONSTANT NUMBER := 4;
-    COD_PREGUNTA_NO_EXISTE        CONSTANT NUMBER := 5;
-    COD_PREGUNTA_YA_ASIGNADA      CONSTANT NUMBER := 6;
-    COD_ERROR_PORCENTAJES         CONSTANT NUMBER := 7;
-    COD_ERROR_REGISTRO            CONSTANT NUMBER := 8;
-    COD_ERROR_SECUENCIA           CONSTANT NUMBER := 9;
+    -- Constantes para códigos de resultado
+    COD_EXITO CONSTANT NUMBER := 0;
+    COD_ERROR_PARAMETROS CONSTANT NUMBER := 1;
+    COD_EXAMEN_NO_EXISTE CONSTANT NUMBER := 2;
+    COD_DOCENTE_NO_AUTORIZADO CONSTANT NUMBER := 3;
+    COD_EXAMEN_YA_INICIADO CONSTANT NUMBER := 4;
+    COD_PREGUNTA_NO_EXISTE CONSTANT NUMBER := 5;
+    COD_PREGUNTA_YA_ASIGNADA CONSTANT NUMBER := 6;
+    COD_ERROR_PORCENTAJES CONSTANT NUMBER := 7;
+    COD_ERROR_REGISTRO CONSTANT NUMBER := 8;
+    COD_ERROR_SECUENCIA CONSTANT NUMBER := 9;
+    COD_ERROR_CANTIDAD_PREGUNTAS CONSTANT NUMBER := 10;
+    COD_ERROR_UMBRAL CONSTANT NUMBER := 11;
 BEGIN
     -- Inicializar parámetros de salida
     p_cantidad_asignadas := 0;
     p_codigo_resultado := COD_ERROR_REGISTRO;
     p_mensaje_resultado := 'Error en el proceso de asignación de preguntas';
-    v_fecha_actual := SYSTIMESTAMP;
 
     -- 1. Validación de parámetros obligatorios
     IF p_id_examen IS NULL OR p_id_docente IS NULL OR 
-       p_ids_preguntas IS NULL OR p_ids_preguntas.COUNT = 0 THEN
+       p_ids_preguntas IS NULL OR p_ids_preguntas.COUNT = 0 OR
+       p_umbral_aprobacion IS NULL THEN
         p_codigo_resultado := COD_ERROR_PARAMETROS;
-        p_mensaje_resultado := 'Error: Los campos id_examen, id_docente y al menos una pregunta son obligatorios';
+        p_mensaje_resultado := 'Error: Los campos id_examen, id_docente, umbral_aprobacion y al menos una pregunta son obligatorios';
         RETURN;
     END IF;
 
@@ -855,9 +860,17 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 2. Validar que el examen exista y obtener sus fechas
+    -- Validar que el umbral de aprobación esté entre 0 y 100
+    IF p_umbral_aprobacion < 0 OR p_umbral_aprobacion > 100 THEN
+        p_codigo_resultado := COD_ERROR_UMBRAL;
+        p_mensaje_resultado := 'Error: El umbral de aprobación debe estar entre 0 y 100';
+        RETURN;
+    END IF;
+
+    -- 2. Validar que el examen exista y obtener sus datos
     BEGIN
-        SELECT 1, FECHA_INICIO, FECHA_FIN INTO v_examen_existe, v_fecha_inicio, v_fecha_fin
+        SELECT 1, FECHA_INICIO, FECHA_FIN, CANTIDAD_PREGUNTAS_TOTAL, CANTIDAD_PREGUNTAS_PRESENTAR 
+        INTO v_examen_existe, v_fecha_inicio, v_fecha_fin, v_cantidad_preguntas_total, v_cantidad_preguntas_presentar
         FROM EXAMEN
         WHERE ID_EXAMEN = p_id_examen
           AND ID_ESTADO = 1 -- Activo
@@ -869,7 +882,7 @@ BEGIN
             RETURN;
     END;
 
-    -- 3. Validar que el docente sea el creador del examen o tenga permisos
+    -- 3. Validar que el docente sea el creador del examen
     BEGIN
         SELECT 1 INTO v_docente_es_creador
         FROM EXAMEN
@@ -884,11 +897,7 @@ BEGIN
     END;
 
     -- 4. Validar que el examen no haya iniciado
-    -- Un examen se considera iniciado si:
-    -- a) La fecha actual es mayor o igual a la fecha de inicio, o
-    -- b) Existe una presentación activa
     IF v_fecha_actual >= v_fecha_inicio THEN
-        -- Verificar si hay presentaciones activas
         BEGIN
             SELECT 1 INTO v_examen_iniciado
             FROM PRESENTACION_EXAMEN
@@ -901,11 +910,29 @@ BEGIN
             RETURN;
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
-                NULL; -- No hay presentaciones activas, se puede continuar
+                NULL;
         END;
     END IF;
 
-    -- 5. Verificar y crear secuencia si no existe
+    -- 5. Validar cantidad de preguntas
+    IF p_ids_preguntas.COUNT != v_cantidad_preguntas_total THEN
+        p_codigo_resultado := COD_ERROR_CANTIDAD_PREGUNTAS;
+        p_mensaje_resultado := 'Error: Se deben asignar exactamente ' || v_cantidad_preguntas_total || ' preguntas';
+        RETURN;
+    END IF;
+
+    -- 6. Verificar preguntas duplicadas
+    FOR i IN 1..p_ids_preguntas.COUNT LOOP
+        FOR j IN (i+1)..p_ids_preguntas.COUNT LOOP
+            IF p_ids_preguntas(i) = p_ids_preguntas(j) THEN
+                p_codigo_resultado := COD_ERROR_PARAMETROS;
+                p_mensaje_resultado := 'Error: No se permiten preguntas duplicadas';
+                RETURN;
+            END IF;
+        END LOOP;
+    END LOOP;
+
+    -- 7. Verificar y crear secuencia si no existe
     BEGIN
         SELECT COUNT(*) INTO v_seq_existe
         FROM USER_SEQUENCES
@@ -921,19 +948,27 @@ BEGIN
             RETURN;
     END;
 
-    -- 6. Validar la suma de porcentajes (debe ser igual a 100)
+    -- 8. Validar la suma de porcentajes (debe ser igual al umbral de aprobación)
     v_suma_porcentajes := 0;
     FOR i IN 1..p_porcentajes.COUNT LOOP
+        -- Validar que cada porcentaje esté entre 0 y 100
+        IF p_porcentajes(i) < 0 OR p_porcentajes(i) > 100 THEN
+            p_codigo_resultado := COD_ERROR_PORCENTAJES;
+            p_mensaje_resultado := 'Error: Los porcentajes deben estar entre 0 y 100';
+            RETURN;
+        END IF;
         v_suma_porcentajes := v_suma_porcentajes + p_porcentajes(i);
     END LOOP;
     
-    IF v_suma_porcentajes != 100 THEN
+    -- Permitir un pequeño margen de error (0.01) para manejar redondeos
+    IF ABS(v_suma_porcentajes - p_umbral_aprobacion) > 0.01 THEN
         p_codigo_resultado := COD_ERROR_PORCENTAJES;
-        p_mensaje_resultado := 'Error: La suma de los porcentajes debe ser igual a 100. Suma actual: ' || v_suma_porcentajes;
+        p_mensaje_resultado := 'Error: La suma de los porcentajes debe ser igual al umbral de aprobación (' || 
+                             p_umbral_aprobacion || '). Suma actual: ' || v_suma_porcentajes;
         RETURN;
     END IF;
 
-    -- 7. Procesar cada pregunta y asignarla al examen
+    -- 9. Procesar cada pregunta y asignarla al examen
     BEGIN
         -- Primero, eliminar las preguntas actualmente asignadas al examen
         DELETE FROM EXAMEN_PREGUNTA
@@ -944,14 +979,9 @@ BEGIN
             v_max_id NUMBER;
             v_current_seq_value NUMBER;
         BEGIN
-            -- Obtener el máximo ID actual
             SELECT NVL(MAX(ID_EXAMEN_PREGUNTA), 0) INTO v_max_id FROM EXAMEN_PREGUNTA;
-            
-            -- Obtener el valor actual de la secuencia
             SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_current_seq_value FROM DUAL;
             
-            -- Si el máximo ID es mayor que el valor actual de la secuencia,
-            -- incrementar la secuencia para que empiece en max_id + 1
             IF v_max_id >= v_current_seq_value THEN
                 EXECUTE IMMEDIATE 'ALTER SEQUENCE SEQ_ID_EXAMEN_PREGUNTA INCREMENT BY ' 
                     || TO_CHAR(v_max_id - v_current_seq_value + 1);
@@ -980,7 +1010,7 @@ BEGIN
             -- Generar ID para la asignación de pregunta-examen
             SELECT SEQ_ID_EXAMEN_PREGUNTA.NEXTVAL INTO v_id_examen_pregunta FROM DUAL;
             
-            -- Insertar la asignación (sin FECHA_ASIGNACION)
+            -- Insertar la asignación
             INSERT INTO EXAMEN_PREGUNTA (
                 ID_EXAMEN_PREGUNTA, ID_EXAMEN, ID_PREGUNTA, 
                 PORCENTAJE, ORDEN
@@ -992,10 +1022,11 @@ BEGIN
             p_cantidad_asignadas := p_cantidad_asignadas + 1;
         END LOOP;
         
-        -- Actualizar el examen para reflejar que tiene preguntas asignadas
+        -- Actualizar el examen
         UPDATE EXAMEN 
         SET FECHA_ULTIMA_MODIFICACION = v_fecha_actual,
-            ID_USUARIO_ULTIMA_MODIFICACION = p_id_docente
+            ID_USUARIO_ULTIMA_MODIFICACION = p_id_docente,
+            UMBRAL_APROBACION = p_umbral_aprobacion
         WHERE ID_EXAMEN = p_id_examen;
         
         -- Asignar valores de salida
@@ -1009,10 +1040,6 @@ BEGIN
             p_codigo_resultado := COD_ERROR_REGISTRO;
             p_mensaje_resultado := 'Error al asignar preguntas al examen: ' || SUBSTR(SQLERRM, 1, 500);
     END;
-EXCEPTION
-    WHEN OTHERS THEN
-        p_codigo_resultado := COD_ERROR_REGISTRO;
-        p_mensaje_resultado := 'Error inesperado: ' || SUBSTR(SQLERRM, 1, 500);
 END SP_ASIGNAR_PREGUNTAS_EXAMEN;
 
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

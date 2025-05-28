@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 
 @RestController
 @RequestMapping("/api/examen")
@@ -70,23 +72,77 @@ public class ExamenController {
         }
     }
 
-    @PostMapping("/{idExamen}/preguntas")
+    @PostMapping("/asignar-preguntas-examen/{idExamen}")
     public ResponseEntity<?> asignarPreguntasExamen(
             @PathVariable Long idExamen,
             @RequestBody PreguntaExamenRequestDTO request) {
         try {
+            // Validar que las listas tengan la misma longitud
+            if (request.getIdsPreguntas().size() != request.getPorcentajes().size() || 
+                request.getIdsPreguntas().size() != request.getOrdenes().size()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Las listas de preguntas, porcentajes y órdenes deben tener la misma longitud"
+                ));
+            }
+
+            // Validar el umbral de aprobación
+            if (request.getUmbralAprobacion() == null || request.getUmbralAprobacion() < 0 || request.getUmbralAprobacion() > 100) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "El umbral de aprobación debe estar entre 0 y 100"
+                ));
+            }
+
+            // Validar que no haya preguntas duplicadas
+            Set<Long> preguntasUnicas = new HashSet<>(request.getIdsPreguntas());
+            if (preguntasUnicas.size() != request.getIdsPreguntas().size()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "No se permiten preguntas duplicadas"
+                ));
+            }
+
+            // Validar que los porcentajes estén entre 0 y 100
+            for (Double porcentaje : request.getPorcentajes()) {
+                if (porcentaje < 0 || porcentaje > 100) {
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Los porcentajes deben estar entre 0 y 100"
+                    ));
+                }
+            }
+
             request.setIdExamen(idExamen);
             PreguntaExamenResponseDTO response = examenService.asignarPreguntasExamen(request);
+            
+            // Mapear códigos de resultado a mensajes específicos
+            String mensaje = switch (response.getCodigoResultado()) {
+                case 0 -> "Preguntas asignadas exitosamente";
+                case 1 -> "Error en los parámetros proporcionados";
+                case 2 -> "El examen especificado no existe o no está activo";
+                case 3 -> "El docente no está autorizado a modificar este examen";
+                case 4 -> "No se pueden modificar las preguntas de un examen ya iniciado";
+                case 5 -> "Una o más preguntas no existen o no están activas";
+                case 6 -> "Una o más preguntas ya están asignadas al examen";
+                case 7 -> "Error en la suma de porcentajes";
+                case 8 -> "Error al registrar las preguntas";
+                case 9 -> "Error en la secuencia de IDs";
+                case 10 -> "Error en la cantidad de preguntas";
+                case 11 -> "Error en el umbral de aprobación";
+                default -> response.getMensajeResultado();
+            };
+
             if (response.getCodigoResultado() == 0) {
                 return ResponseEntity.ok(Map.of(
                     "success", true,
                     "data", response,
-                    "message", "Preguntas asignadas exitosamente"
+                    "message", mensaje
                 ));
             } else {
                 return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", response.getMensajeResultado()
+                    "message", mensaje
                 ));
             }
         } catch (Exception e) {
