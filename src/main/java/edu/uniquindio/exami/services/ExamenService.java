@@ -725,31 +725,69 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
     }
 
     public List<PreguntaExamenDTO> obtenerPreguntasExamen(Long idPresentacion) {
-        return jdbcTemplate.query(
-            "SELECT * FROM TABLE(OBTENER_PREGUNTAS_PRESENTACION(?))",
-            (rs, rowNum) -> {
-                PreguntaExamenDTO pregunta = new PreguntaExamenDTO();
-                pregunta.setIdPregunta(rs.getLong("ID_PREGUNTA"));
-                pregunta.setTextoPregunta(rs.getString("TEXTO_PREGUNTA"));
-                pregunta.setPorcentaje(rs.getInt("PORCENTAJE"));
-                pregunta.setOrden(rs.getInt("ORDEN"));
-                
-                // Obtener opciones de respuesta
-                List<OpcionRespuestaDTO> opciones = jdbcTemplate.query(
-                    "SELECT * FROM TABLE(PAQUETE_EXAMEN.OBTENER_OPCIONES_PREGUNTA(?))",
-                    (rs2, rowNum2) -> new OpcionRespuestaDTO(
-                        rs2.getLong("ID_OPCION"),
-                        rs2.getString("TEXTO"),
-                        rs2.getInt("ORDEN")
-                    ),
-                    pregunta.getIdPregunta()
+        SimpleJdbcCall jdbcCall = new SimpleJdbcCall(jdbcTemplate)
+                .withFunctionName("OBTENER_PREGUNTAS_PRESENTACION")
+                .declareParameters(
+                        new SqlParameter("p_id_presentacion", Types.NUMERIC),
+                        new SqlOutParameter("return", OracleTypes.CURSOR, new PreguntaExamenRowMapper())
                 );
-                pregunta.setOpciones(opciones);
-                
-                return pregunta;
-            },
-            idPresentacion
-        );
+
+        Map<String, Object> result = jdbcCall.execute(idPresentacion);
+        @SuppressWarnings("unchecked")
+        List<PreguntaExamenDTO> preguntas = (List<PreguntaExamenDTO>) result.get("return");
+
+        // Para cada pregunta, obtener opciones de respuesta
+        preguntas.forEach(pregunta -> {
+            List<OpcionRespuestaDTO> opciones = obtenerOpcionesPregunta(pregunta.getIdPregunta());
+            pregunta.setOpciones(opciones);
+        });
+
+        return preguntas;
+    }
+
+    private List<OpcionRespuestaDTO> obtenerOpcionesPregunta(Long idPregunta) {
+        SimpleJdbcCall jdbcCall = new SimpleJdbcCall(jdbcTemplate)
+                .withCatalogName("PAQUETE_EXAMEN")
+                .withFunctionName("OBTENER_OPCIONES_PREGUNTA")
+                .declareParameters(
+                        new SqlParameter("p_id_pregunta", Types.NUMERIC),
+                        new SqlOutParameter("return", OracleTypes.CURSOR, new OpcionRespuestaRowMapper())
+                );
+
+        Map<String, Object> inParams = new HashMap<>();
+        inParams.put("p_id_pregunta", idPregunta);
+
+        Map<String, Object> result = jdbcCall.execute(inParams);
+
+        @SuppressWarnings("unchecked")
+        List<OpcionRespuestaDTO> opciones = (List<OpcionRespuestaDTO>) result.get("return");
+        return opciones;
+    }
+
+
+    // RowMapper para preguntas
+    private static class PreguntaExamenRowMapper implements RowMapper<PreguntaExamenDTO> {
+        @Override
+        public PreguntaExamenDTO mapRow(ResultSet rs, int rowNum) throws SQLException {
+            PreguntaExamenDTO pregunta = new PreguntaExamenDTO();
+            pregunta.setIdPregunta(rs.getLong("ID_PREGUNTA"));
+            pregunta.setTextoPregunta(rs.getString("TEXTO_PREGUNTA"));
+            pregunta.setPorcentaje(rs.getInt("PORCENTAJE"));
+            pregunta.setOrden(rs.getInt("ORDEN"));
+            return pregunta;
+        }
+    }
+
+    // RowMapper para opciones
+    private static class OpcionRespuestaRowMapper implements RowMapper<OpcionRespuestaDTO> {
+        @Override
+        public OpcionRespuestaDTO mapRow(ResultSet rs, int rowNum) throws SQLException {
+            return new OpcionRespuestaDTO(
+                    rs.getLong("ID_OPCION"),
+                    rs.getString("TEXTO"),
+                    rs.getInt("ORDEN")
+            );
+        }
     }
 
     public RespuestaResponseDTO responderPregunta(Long idPresentacion, RespuestaEstudianteDTO respuesta) {
@@ -1005,7 +1043,7 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
      */
     public NivelDificultadDTO obtenerNivelDificultadPorId(Long idNivelDificultad) {
         try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dif_id(?)}")) {
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dificultad_por_id(?)}")) {
 
             // Registrar parámetros
             stmt.registerOutParameter(1, Types.REF_CURSOR);
