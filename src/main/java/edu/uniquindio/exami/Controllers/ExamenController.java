@@ -584,5 +584,10 @@ public class ExamenController {
                 ));
         }
     }
+
+    @DeleteMapping("/eliminar/{id}")
+    public ResponseEntity<OperacionResponseDTO> eliminarExamen(@PathVariable Long id) {
+        return ResponseEntity.ok(examenService.eliminarExamen(id));
+    }
 }
 

@@ -1104,6 +1104,19 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
         return null;
     }
 
+    public OperacionResponseDTO eliminarExamen(Long idExamen) {
+        try (Connection conn = dataSource.getConnection()) {
+            CallableStatement stmt = conn.prepareCall("{ call SP_ELIMINAR_EXAMEN(?, ?, ?) }");
+            stmt.setLong(1, idExamen);
+            stmt.registerOutParameter(2, Types.INTEGER);
+            stmt.registerOutParameter(3, Types.VARCHAR);
+            stmt.execute();
+            return new OperacionResponseDTO(stmt.getInt(2), stmt.getString(3));
+        } catch (SQLException e) {
+            return new OperacionResponseDTO(-99, "Error técnico: " + e.getMessage());
+        }
+    }
+
 
 
 

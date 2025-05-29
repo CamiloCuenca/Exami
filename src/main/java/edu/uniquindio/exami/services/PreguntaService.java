@@ -1,6 +1,7 @@
 package edu.uniquindio.exami.services;
 
 import edu.uniquindio.exami.dto.OpcionRespuestaDisponibleDTO;
+import edu.uniquindio.exami.dto.OperacionResponseDTO;
 import edu.uniquindio.exami.dto.PreguntaDisponibleDTO;
 import edu.uniquindio.exami.dto.PreguntaRequestDTO;
 import edu.uniquindio.exami.dto.PreguntaResponseDTO;
@@ -334,6 +335,19 @@ public class PreguntaService {
                     log.error("Error al cerrar la conexión: {}", e.getMessage());
                 }
             }
+        }
+    }
+
+    public OperacionResponseDTO eliminarPregunta(Long idPregunta) {
+        try (Connection conn = dataSource.getConnection()) {
+            CallableStatement stmt = conn.prepareCall("{ call SP_ELIMINAR_PREGUNTA(?, ?, ?) }");
+            stmt.setLong(1, idPregunta);
+            stmt.registerOutParameter(2, Types.INTEGER);
+            stmt.registerOutParameter(3, Types.VARCHAR);
+            stmt.execute();
+            return new OperacionResponseDTO(stmt.getInt(2), stmt.getString(3));
+        } catch (SQLException e) {
+            return new OperacionResponseDTO(-99, "Error técnico: " + e.getMessage());
         }
     }
 

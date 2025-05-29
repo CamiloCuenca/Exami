@@ -2,12 +2,14 @@ package edu.uniquindio.exami.Controllers;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import edu.uniquindio.exami.services.PreguntaService;
+import edu.uniquindio.exami.dto.OperacionResponseDTO;
 import edu.uniquindio.exami.dto.PreguntaDisponibleDTO;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -59,6 +61,11 @@ public class PreguntaController {
         } else {
             return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
         }
+    }
+
+    @DeleteMapping("/eliminar/{id}")
+    public ResponseEntity<OperacionResponseDTO> eliminarPregunta(@PathVariable Long id) {
+        return ResponseEntity.ok(preguntaService.eliminarPregunta(id));
     }
 
 }
