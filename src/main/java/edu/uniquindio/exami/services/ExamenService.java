@@ -934,7 +934,7 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
      */
     public CategoriaDTO obtenerCategoriaExamenPorId(Long idCategoria) {
         try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{? = call obtener_categoria_examen_por_id(?)}")) {
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_cat_examen_id(?)}")) {
 
             // Registrar parámetros
             stmt.registerOutParameter(1, Types.REF_CURSOR);
@@ -1005,7 +1005,7 @@ public List<ExamenCardDTO> listarExamenesExpiradosEstudiante(Long idEstudiante) 
      */
     public NivelDificultadDTO obtenerNivelDificultadPorId(Long idNivelDificultad) {
         try (Connection conn = dataSource.getConnection();
-             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dificultad_por_id(?)}")) {
+             CallableStatement stmt = conn.prepareCall("{? = call obtener_nivel_dif_id(?)}")) {
 
             // Registrar parámetros
             stmt.registerOutParameter(1, Types.REF_CURSOR);

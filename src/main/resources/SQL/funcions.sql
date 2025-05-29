@@ -30,6 +30,34 @@ BEGIN
 END;
 /
 
+--Datos para probarlo en la BD
+SET SERVEROUTPUT on;
+DECLARE
+v_cursor SYS_REFCURSOR;
+    v_id_examen PROYECTO_FINAL.EXAMEN.ID_EXAMEN%TYPE;
+    v_nombre PROYECTO_FINAL.EXAMEN.NOMBRE%TYPE;
+    v_descripcion PROYECTO_FINAL.EXAMEN.DESCRIPCION%TYPE;
+    v_fecha_inicio VARCHAR2(20);
+    v_fecha_fin VARCHAR2(20);
+    v_estado VARCHAR2(20);
+    v_nombre_tema PROYECTO_FINAL.TEMA.NOMBRE%TYPE;
+    v_nombre_curso PROYECTO_FINAL.CURSO.NOMBRE%TYPE;
+BEGIN
+    -- Llama a la función y obtiene el cursor
+    v_cursor := OBTENER_EXAMENES_ESTUDIANTE(p_id_estudiante => 4); -- reemplaza 123 con un ID válido
+
+    -- Itera sobre los resultados del cursor
+    LOOP
+FETCH v_cursor INTO v_id_examen, v_nombre, v_descripcion, v_fecha_inicio, v_fecha_fin, v_estado, v_nombre_tema, v_nombre_curso;
+        EXIT WHEN v_cursor%NOTFOUND;
+
+        DBMS_OUTPUT.PUT_LINE('Examen: ' || v_id_examen || ' - ' || v_nombre || ', Estado: ' || v_estado);
+END LOOP;
+
+CLOSE v_cursor;
+END;
+
+
 --///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CREATE OR REPLACE FUNCTION OBTENER_EXAMENES_DOCENTE(
@@ -70,6 +98,59 @@ BEGIN
 END;
 /
 
+-- Datos para probarlo en la BD
+SET SERVEROUTPUT ON;
+DECLARE
+v_cursor SYS_REFCURSOR;
+
+    -- Variables para almacenar los datos del cursor
+    v_id_examen                  PROYECTO_FINAL.EXAMEN.ID_EXAMEN%TYPE;
+    v_nombre                    PROYECTO_FINAL.EXAMEN.NOMBRE%TYPE;
+    v_descripcion               PROYECTO_FINAL.EXAMEN.DESCRIPCION%TYPE;
+    v_fecha_inicio              VARCHAR2(20);
+    v_fecha_fin                 VARCHAR2(20);
+    v_estado                    VARCHAR2(20);
+    v_nombre_tema               PROYECTO_FINAL.TEMA.NOMBRE%TYPE;
+    v_nombre_curso              PROYECTO_FINAL.CURSO.NOMBRE%TYPE;
+    v_cant_preg_total           NUMBER;
+    v_cant_preg_presentar       NUMBER;
+    v_tiempo_limite             NUMBER;
+    v_peso_curso                NUMBER;
+    v_umbral_aprobacion         NUMBER;
+    v_intentos_permitidos       NUMBER;
+    v_mostrar_resultados        VARCHAR2(1);
+    v_permitir_retroalimentacion VARCHAR2(1);
+BEGIN
+    -- Llamada a la función
+    v_cursor := OBTENER_EXAMENES_DOCENTE(1); -- Cambia 123 por un ID de docente válido
+
+    -- Iterar los resultados
+    LOOP
+FETCH v_cursor INTO
+            v_id_examen, v_nombre, v_descripcion, v_fecha_inicio, v_fecha_fin, v_estado,
+            v_nombre_tema, v_nombre_curso,
+            v_cant_preg_total, v_cant_preg_presentar, v_tiempo_limite,
+            v_peso_curso, v_umbral_aprobacion, v_intentos_permitidos,
+            v_mostrar_resultados, v_permitir_retroalimentacion;
+
+        EXIT WHEN v_cursor%NOTFOUND;
+
+        -- Mostrar en consola
+        DBMS_OUTPUT.PUT_LINE('Examen: ' || v_id_examen || ' - ' || v_nombre || ' (' || v_estado || ')');
+        DBMS_OUTPUT.PUT_LINE('Tema: ' || v_nombre_tema || ', Curso: ' || v_nombre_curso);
+        DBMS_OUTPUT.PUT_LINE('Fecha: ' || v_fecha_inicio || ' a ' || v_fecha_fin);
+        DBMS_OUTPUT.PUT_LINE('Preguntas: ' || v_cant_preg_presentar || '/' || v_cant_preg_total ||
+                             ', Intentos: ' || v_intentos_permitidos ||
+                             ', Tiempo: ' || v_tiempo_limite || ' min');
+        DBMS_OUTPUT.PUT_LINE('Aprobación: ' || v_umbral_aprobacion || '%, Peso: ' || v_peso_curso);
+        DBMS_OUTPUT.PUT_LINE('Resultados: ' || v_mostrar_resultados || ', Retroalimentación: ' || v_permitir_retroalimentacion);
+        DBMS_OUTPUT.PUT_LINE('------------------------------------------------------');
+END LOOP;
+
+CLOSE v_cursor;
+END;
+/
+
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 -- Obtener examenes disponibles  de  un estudainte
@@ -99,6 +180,45 @@ WHERE m.ID_ESTUDIANTE = p_id_estudiante
 ORDER BY e.FECHA_INICIO;
 
 RETURN v_resultado;
+END;
+/
+
+-- Datos para probarlo en la BD
+SET SERVEROUTPUT ON;
+DECLARE
+v_cursor SYS_REFCURSOR;
+
+    v_id_examen        PROYECTO_FINAL.EXAMEN.ID_EXAMEN%TYPE;
+    v_nombre           PROYECTO_FINAL.EXAMEN.NOMBRE%TYPE;
+    v_descripcion      PROYECTO_FINAL.EXAMEN.DESCRIPCION%TYPE;
+    v_fecha_inicio     VARCHAR2(20);
+    v_fecha_fin        VARCHAR2(20);
+    v_estado           VARCHAR2(20);
+    v_nombre_tema      PROYECTO_FINAL.TEMA.NOMBRE%TYPE;
+    v_nombre_curso     PROYECTO_FINAL.CURSO.NOMBRE%TYPE;
+
+BEGIN
+    -- Llamada a la función con un ID de estudiante (reemplaza 456 con uno real)
+    v_cursor := OBT_EXA_PROGRESO_EST(4);
+
+    -- Iterar los resultados
+    LOOP
+FETCH v_cursor INTO
+            v_id_examen, v_nombre, v_descripcion,
+            v_fecha_inicio, v_fecha_fin, v_estado,
+            v_nombre_tema, v_nombre_curso;
+
+        EXIT WHEN v_cursor%NOTFOUND;
+
+        -- Mostrar datos
+        DBMS_OUTPUT.PUT_LINE('Examen ID: ' || v_id_examen || ' - ' || v_nombre);
+        DBMS_OUTPUT.PUT_LINE('Curso: ' || v_nombre_curso || ' | Tema: ' || v_nombre_tema);
+        DBMS_OUTPUT.PUT_LINE('Fecha: ' || v_fecha_inicio || ' a ' || v_fecha_fin);
+        DBMS_OUTPUT.PUT_LINE('Estado: ' || v_estado);
+        DBMS_OUTPUT.PUT_LINE('------------------------------------------------');
+END LOOP;
+
+CLOSE v_cursor;
 END;
 /
 
@@ -133,6 +253,43 @@ RETURN v_resultado;
 END;
 /
 
+-- Datos para probarlo en la BD
+SET SERVEROUTPUT ON;
+DECLARE
+v_cursor SYS_REFCURSOR;
+
+    v_id_examen      PROYECTO_FINAL.EXAMEN.ID_EXAMEN%TYPE;
+    v_nombre         PROYECTO_FINAL.EXAMEN.NOMBRE%TYPE;
+    v_descripcion    PROYECTO_FINAL.EXAMEN.DESCRIPCION%TYPE;
+    v_fecha_inicio   VARCHAR2(20);
+    v_fecha_fin      VARCHAR2(20);
+    v_estado         VARCHAR2(20);
+    v_nombre_tema    PROYECTO_FINAL.TEMA.NOMBRE%TYPE;
+    v_nombre_curso   PROYECTO_FINAL.CURSO.NOMBRE%TYPE;
+
+BEGIN
+    -- Llama la función con un ID de estudiante real (reemplaza 456)
+    v_cursor := EXAMENES_EXPIRADOS_EST(4);
+
+    LOOP
+FETCH v_cursor INTO
+            v_id_examen, v_nombre, v_descripcion,
+            v_fecha_inicio, v_fecha_fin, v_estado,
+            v_nombre_tema, v_nombre_curso;
+
+        EXIT WHEN v_cursor%NOTFOUND;
+
+        DBMS_OUTPUT.PUT_LINE('Examen ID: ' || v_id_examen || ' - ' || v_nombre);
+        DBMS_OUTPUT.PUT_LINE('Curso: ' || v_nombre_curso || ' | Tema: ' || v_nombre_tema);
+        DBMS_OUTPUT.PUT_LINE('Fecha: ' || v_fecha_inicio || ' a ' || v_fecha_fin);
+        DBMS_OUTPUT.PUT_LINE('Estado: ' || v_estado);
+        DBMS_OUTPUT.PUT_LINE('------------------------------------------------');
+END LOOP;
+
+CLOSE v_cursor;
+END;
+/
+
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CREATE OR REPLACE FUNCTION EXAMENES_PENDIENTES_EST(
@@ -164,6 +321,43 @@ RETURN v_resultado;
 END;
 /
 
+-- Datos para probarlo en la BD
+SET SERVEROUTPUT ON;
+DECLARE
+v_cursor SYS_REFCURSOR;
+
+    v_id_examen      PROYECTO_FINAL.EXAMEN.ID_EXAMEN%TYPE;
+    v_nombre         PROYECTO_FINAL.EXAMEN.NOMBRE%TYPE;
+    v_descripcion    PROYECTO_FINAL.EXAMEN.DESCRIPCION%TYPE;
+    v_fecha_inicio   VARCHAR2(20);
+    v_fecha_fin      VARCHAR2(20);
+    v_estado         VARCHAR2(20);
+    v_nombre_tema    PROYECTO_FINAL.TEMA.NOMBRE%TYPE;
+    v_nombre_curso   PROYECTO_FINAL.CURSO.NOMBRE%TYPE;
+
+BEGIN
+    -- Reemplaza 456 con un ID de estudiante real
+    v_cursor := EXAMENES_PENDIENTES_EST(4);
+
+    LOOP
+FETCH v_cursor INTO
+            v_id_examen, v_nombre, v_descripcion,
+            v_fecha_inicio, v_fecha_fin, v_estado,
+            v_nombre_tema, v_nombre_curso;
+
+        EXIT WHEN v_cursor%NOTFOUND;
+
+        DBMS_OUTPUT.PUT_LINE('Examen ID: ' || v_id_examen || ' - ' || v_nombre);
+        DBMS_OUTPUT.PUT_LINE('Curso: ' || v_nombre_curso || ' | Tema: ' || v_nombre_tema);
+        DBMS_OUTPUT.PUT_LINE('Fecha: ' || v_fecha_inicio || ' a ' || v_fecha_fin);
+        DBMS_OUTPUT.PUT_LINE('Estado: ' || v_estado);
+        DBMS_OUTPUT.PUT_LINE('------------------------------------------------');
+END LOOP;
+
+CLOSE v_cursor;
+END;
+/
+
 --/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*Funcion para Calcular la nota total obtenida por un estudiante en una presentación de
@@ -182,6 +376,15 @@ WHERE ID_PRESENTACION = P_ID_PRESENTACION;
 RETURN V_TOTAL;
 END;
 /
+
+--Datos para probar la BD
+SET SERVEROUTPUT ON;
+DECLARE
+v_nota NUMBER;
+BEGIN
+    v_nota := CALCULAR_NOTA_ESTUDIANTE(3);
+    DBMS_OUTPUT.PUT_LINE('Nota total: ' || v_nota);
+END;
 
 --////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -209,3 +412,11 @@ ELSE
 END IF;
 END;
 /
+
+SET SERVEROUTPUT ON;
+DECLARE
+v_porcentaje NUMBER;
+BEGIN
+    v_porcentaje := PORCENTAJE_PREGUNTAS_CORRECTAS(4);
+    DBMS_OUTPUT.PUT_LINE('Porcentaje de respuestas correctas: ' || v_porcentaje || '%');
+END;
